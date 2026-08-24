@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Runtime data / logs
+data/
+logs/
+*.pid
+*.log
+.lgd-*
+
+# Local secrets / env files
+.env
+.env.*
+*.secret
+secrets/
+credentials*
+
+# Backups and local artifacts
+*.bak
+*.bak-*
+*.tmp
+.DS_Store
