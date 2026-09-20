@@ -155,9 +155,6 @@ def mac_vendor_hint(mac: str) -> str:
 def lan_status() -> Dict[str, Any]:
     def collect():
         arp = run(['ip', 'neigh', 'show'], timeout=3)
-        if not arp.strip() and hostinfo.IS_WINDOWS:
-            win = hostinfo.windows_arp() or []
-            return {'available': True, 'devices': [{'ip': d['ip'], 'mac': d['mac'], 'vendor': mac_vendor_hint(d['mac']), 'hostname': '', 'state': d['state']} for d in win[:100]]}
         devices = []
         for line in arp.splitlines():
             parts = line.split()

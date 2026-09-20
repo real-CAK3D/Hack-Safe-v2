@@ -7,6 +7,7 @@
   <link rel="icon" type="image/svg+xml" href="/logo.svg">
   <link rel="stylesheet" href="/style.css?v=20260912-layered-alerts">
   <link rel="stylesheet" href="/v2.css?v=2.0.1">
+  <link rel="stylesheet" href="/deck.css?v=2.2.0">
   <meta name="theme-color" content="#050508">
 </head>
 <body>
@@ -18,6 +19,7 @@
 
     <nav class="tabs" aria-label="Spac3-Gh0st pages">
       <button class="tab-button active" data-tab="dash" onclick="showTab('dash')">Dashboard</button>
+      <button class="tab-button" data-tab="deck" onclick="showTab('deck')">Deck</button>
       <button class="tab-button" data-tab="systems" onclick="showTab('systems')">Systems</button>
       <button class="tab-button" data-tab="signals" onclick="showTab('signals')">Signals</button>
       <button class="tab-button" data-tab="lab" onclick="showTab('lab')">Lab</button>
@@ -41,6 +43,8 @@
         <section class="card stat-card open-tools-card"><h2>Open Tools</h2><p class="mini">Quick launch spots for the local UIs you keep asking for.</p><div id="openToolsViz" class="open-tools-grid">Loading launch links...</div></section>
         <section class="card events dashboard-events"><h2>Activity Feed</h2><div id="events"></div></section>
       </section>
+
+      <section id="tab-deck" class="tab-panel page deck-page"></section>
 
       <section id="tab-systems" class="tab-panel page systems-page dashboard-page">
         <section class="card page-hero"><h2>Systems</h2><p class="mini">Core Pi health, live system monitor, service controls, storage, load, and process telemetry.</p></section>
@@ -227,5 +231,7 @@ Plugin switches write to config.plugins and reload the dashboard backend.</pre>
   <script src="/app.js?v=2.0.1"></script>
   <script src="/v2.js?v=2.0.1"></script>
   <script src="/weatherfx.js?v=2.0.1"></script>
+  <script src="/deck.js?v=2.2.0"></script>
+  <script src="/fx.js?v=2.2.0"></script>
 </body>
 </html>

@@ -221,7 +221,7 @@
   }
 
   /* ------------------------------------------------------------------ command palette */
-  var TABS = [['dash', 'Dashboard', '◉'], ['systems', 'Systems', '⚙'], ['signals', 'Signals', '⌁'], ['lab', 'Lab', '⚗'], ['externals', 'Externals', '↗'], ['settings', 'Settings', '☰']];
+  var TABS = [['dash', 'Dashboard', '◉'], ['deck', 'Deck', '◈'], ['systems', 'Systems', '⚙'], ['signals', 'Signals', '⌁'], ['lab', 'Lab', '⚗'], ['externals', 'Externals', '↗'], ['settings', 'Settings', '☰']];
   function goTab(t) { call('showTab', t); }
   function commands() {
     var list = [];
@@ -303,7 +303,7 @@
   function showHelp() {
     var h = document.createElement('div'); h.className = 'v2-cmd-back open'; h.setAttribute('role', 'dialog'); h.setAttribute('aria-label', 'Keyboard shortcuts');
     h.innerHTML = '<div class="v2-cmd"><div class="v2-help"><h3>Keyboard shortcuts</h3>' +
-      '<div><kbd>Ctrl/\u2318 K</kbd> or <kbd>/</kbd> command palette</div><div><kbd>1</kbd>\u2013<kbd>6</kbd> switch tabs</div>' +
+      '<div><kbd>Ctrl/\u2318 K</kbd> or <kbd>/</kbd> command palette</div><div><kbd>1</kbd>\u2013<kbd>7</kbd> switch tabs</div>' +
       '<div><kbd>R</kbd> refresh</div><div><kbd>T</kbd> / <kbd>Shift T</kbd> next / previous theme</div><div><kbd>F</kbd> fullscreen</div><div><kbd>?</kbd> this help</div><div><kbd>Esc</kbd> close</div></div></div>';
     var close = function (e) { if (e.type === 'keydown' && e.key !== 'Escape') return; h.remove(); document.removeEventListener('keydown', close); };
     h.addEventListener('mousedown', function (e) { if (e.target === h) close(e); });
@@ -319,7 +319,7 @@
     if (back && back.classList.contains('open')) return;
     var k = e.key;
     if (k === '/') { e.preventDefault(); openPalette(); }
-    else if (k >= '1' && k <= '6') goTab(TABS[+k - 1][0]);
+    else if (k >= '1' && k <= '7') goTab(TABS[+k - 1][0]);
     else if (k === 'r' || k === 'R') { call('refresh'); toast('Refreshing', '', 'info', 1000); }
     else if (k === 't') cycleTheme(1);
     else if (k === 'T') cycleTheme(-1);
@@ -331,7 +331,7 @@
   function init() {
     if (store.get('v2Crt', '0') === '1') document.body.classList.add('v2-crt');
     if (store.get('v2Compact', '0') === '1') document.body.classList.add('v2-compact');
-    var glyphs = { dash: '◉', systems: '⚙', signals: '⌁', lab: '⚗', externals: '↗', settings: '☰' };
+    var glyphs = { dash: '◉', deck: '◈', systems: '⚙', signals: '⌁', lab: '⚗', externals: '↗', settings: '☰' };
     $$('.tab-button').forEach(function (b) { b.dataset.glyph = glyphs[b.dataset.tab] || '•'; });
     var logo = $('header .logo'); if (logo) { var ver = document.createElement('span'); ver.className = 'v2-ver'; logo.parentNode.appendChild(ver); }
     buildHud(); buildVitals(); extendThemeSelect(); decorateCards();
@@ -341,6 +341,14 @@
     setInterval(tickDate, 60000);
     // some cards are rendered lazily by app.js; keep folding controls in sync
     setInterval(decorateCards, 4000);
+    // first load: the server answers with a "warming" placeholder until its slow collectors finish.
+    // app.js only re-polls every 15 s, so nudge it until real data arrives.
+    var warm = setInterval(function () {
+      var s = status();
+      if (s && s.cache_state !== 'warming' && s.system && Object.keys(s.system).length) { clearInterval(warm); return; }
+      if (typeof window.refresh === 'function') window.refresh();
+    }, 2500);
+    setTimeout(function () { clearInterval(warm); }, 60000);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();

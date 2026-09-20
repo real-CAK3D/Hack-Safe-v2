@@ -107,6 +107,41 @@ class ProtonMapTests(unittest.TestCase):
         self.assertIn('proton-map-canvas', js)
 
 
+class MetricsTests(unittest.TestCase):
+    def test_sample_has_chart_fields(self):
+        from spac3ghost import metrics
+        s = metrics.sample()
+        for key in ('t', 'cpu', 'mem', 'disk', 'temp', 'rx', 'tx', 'load'):
+            self.assertIn(key, s)
+
+    def test_history_returns_only_new_samples(self):
+        from spac3ghost import metrics
+        metrics._samples.clear()
+        metrics._samples.extend([{'t': 100.0}, {'t': 102.0}, {'t': 104.0}])
+        h = metrics.history(since=101.0)
+        self.assertEqual([x['t'] for x in h['samples']], [102.0, 104.0])
+        self.assertEqual(h['interval'], metrics.INTERVAL_S)
+        metrics._samples.clear()
+
+
+class DeckAssetTests(unittest.TestCase):
+    def test_deck_tab_is_wired_and_files_parse_as_text(self):
+        from spac3ghost.paths import WEB_DIR
+        html = (WEB_DIR / 'index.html').read_text(encoding='utf-8')
+        for needle in ('data-tab="deck"', 'id="tab-deck"', '/deck.js', '/deck.css', '/fx.js'):
+            self.assertIn(needle, html)
+        for name in ('deck.js', 'deck.css', 'fx.js', 'v2.js', 'v2.css', 'weatherfx.js'):
+            raw = (WEB_DIR / name).read_bytes()
+            self.assertFalse(raw.startswith(b'\xef\xbb\xbf'), f'{name} has a BOM')
+            text = raw.decode('utf-8')  # must be valid UTF-8
+            for bad in ('\u00c2\u00b0', '\u00e2\u20ac'):  # classic mojibake for the degree sign / ellipsis
+                self.assertNotIn(bad, text, f'{name} looks double-encoded')
+
+    def test_app_js_lists_the_deck_tab(self):
+        from spac3ghost.paths import WEB_DIR
+        self.assertIn("'deck'", (WEB_DIR / 'app.js').read_text(encoding='utf-8'))
+
+
 class WeatherFxTests(unittest.TestCase):
     def test_engine_ships_and_is_loaded(self):
         from spac3ghost.paths import WEB_DIR

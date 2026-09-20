@@ -169,10 +169,6 @@ def net_bytes() -> Optional[Dict[str, int]]:
         return {'rx': rx, 'tx': tx}
     except Exception:
         pass
-    if IS_WINDOWS:
-        m = re.search(r'Bytes\s+(\d+)\s+(\d+)', _run(['netstat', '-e'], 4))
-        if m:
-            return {'rx': int(m.group(1)), 'tx': int(m.group(2))}
     return None
 
 
@@ -210,28 +206,6 @@ def windows_wifi() -> Optional[List[Dict[str, Any]]]:
         if m and not rec['channel']:
             rec['channel'] = m.group(1)
     return sorted(nets.values(), key=lambda n: -int(n['signal']))
-
-
-def windows_arp() -> Optional[List[Dict[str, str]]]:
-    """LAN neighbours from the ARP table (dynamic entries only)."""
-    if not IS_WINDOWS:
-        return None
-    out = []
-    for line in _run(['arp', '-a'], 4).splitlines():
-        m = re.match(r'\s*(\d+\.\d+\.\d+\.\d+)\s+([0-9a-fA-F]{2}(?:-[0-9a-fA-F]{2}){5})\s+(\w+)', line)
-        if not m or m.group(3).lower() != 'dynamic':
-            continue
-        ip = m.group(1)
-        if ip.startswith(('224.', '239.', '255.')) or ip.endswith('.255'):
-            continue
-        out.append({'ip': ip, 'mac': m.group(2).replace('-', ':').upper(), 'state': 'REACHABLE'})
-    seen, uniq = set(), []
-    for d in out:  # same MAC on several interfaces -> keep the first
-        key = (d['ip'], d['mac'])
-        if key not in seen:
-            seen.add(key)
-            uniq.append(d)
-    return uniq
 
 
 def windows_bluetooth() -> Optional[Dict[str, Any]]:
