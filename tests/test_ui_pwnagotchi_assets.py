@@ -1,6 +1,6 @@
 from pathlib import Path
 
-ROOT = Path("/home/pi/spac3-gh0st")
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_idle_screen_ui_removed():

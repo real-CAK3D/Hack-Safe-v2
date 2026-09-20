@@ -5,8 +5,10 @@ import json
 import math
 import os
 import re
+import secrets
 import shutil
 import socket
+import string
 import subprocess
 import time
 import urllib.parse
@@ -15,10 +17,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List
 
+from .config import load_config, save_config
+
 DATA_DIR = Path('/home/pi/spac3-gh0st/data')
 SEEN_FILE = DATA_DIR / 'seen.json'
 KNOWN_DEVICES_FILE = DATA_DIR / 'known_devices.json'
 STATUS_HISTORY_FILE = DATA_DIR / 'status_history.json'
+WIFI_PSK_ACTIONS_FILE = DATA_DIR / 'wifi_psk_actions.json'
 GPS_TRAIL_FILE = DATA_DIR / 'gps_trail.json'
 HANDSHAKE_DIR = DATA_DIR / 'handshakes'
 CAPTURE_STATE_FILE = DATA_DIR / 'handshake_capture.json'
@@ -151,12 +156,27 @@ def _mem_status() -> Dict[str, Any]:
         available = values.get('MemAvailable', 0)
         used = max(total - available, 0)
         pct = round((used / total) * 100, 1) if total else None
+        swap_total = values.get('SwapTotal', 0)
+        swap_free = values.get('SwapFree', 0)
+        swap_used = max(swap_total - swap_free, 0)
+        swap_pct = round((swap_used / swap_total) * 100, 1) if swap_total else 0
+        total_mb = round(total / 1024)
+        used_mb = round(used / 1024)
+        available_mb = round(available / 1024)
         return {
-            'total_mb': round(total / 1024),
-            'used_mb': round(used / 1024),
-            'available_mb': round(available / 1024),
+            'total_mb': total_mb,
+            'used_mb': used_mb,
+            'available_mb': available_mb,
+            'free_mb': round(values.get('MemFree', 0) / 1024),
+            'buffers_mb': round(values.get('Buffers', 0) / 1024),
+            'cached_mb': round((values.get('Cached', 0) + values.get('SReclaimable', 0) - values.get('Shmem', 0)) / 1024),
+            'swap_total_mb': round(swap_total / 1024),
+            'swap_used_mb': round(swap_used / 1024),
+            'swap_free_mb': round(swap_free / 1024),
+            'swap_percent': swap_pct,
             'percent': pct,
-            'text': f"{round(used / 1024)}/{round(total / 1024)}MB {pct}%" if pct is not None else 'n/a',
+            'text': f"{used_mb}/{total_mb}MB {pct}%" if pct is not None else 'n/a',
+            'detail_text': f"{used_mb} MB used out of {total_mb} MB; {available_mb} MB available" if pct is not None else 'n/a',
         }
     except Exception:
         return {'text': 'n/a'}
@@ -167,6 +187,110 @@ def _load_status() -> str:
         return ' '.join(f'{v:.2f}' for v in __import__('os').getloadavg())
     except Exception:
         return 'n/a'
+
+
+def _cpu_times() -> Dict[str, int]:
+    try:
+        first = Path('/proc/stat').read_text().splitlines()[0].split()[1:]
+        vals = [int(x) for x in first]
+        keys = ['user', 'nice', 'system', 'idle', 'iowait', 'irq', 'softirq', 'steal', 'guest', 'guest_nice']
+        return {k: vals[i] if i < len(vals) else 0 for i, k in enumerate(keys)}
+    except Exception:
+        return {}
+
+
+def _cpu_model() -> str:
+    try:
+        for line in Path('/proc/cpuinfo').read_text(errors='ignore').splitlines():
+            if line.lower().startswith(('model name', 'hardware', 'model')) and ':' in line:
+                val = line.split(':', 1)[1].strip()
+                if val:
+                    return val
+    except Exception:
+        pass
+    return ''
+
+
+def _throttle_status() -> Dict[str, Any]:
+    raw = run(['vcgencmd', 'get_throttled'], timeout=2).strip() if shutil.which('vcgencmd') else ''
+    code = 0
+    if raw.startswith('throttled='):
+        try:
+            code = int(raw.split('=', 1)[1], 16)
+        except Exception:
+            code = 0
+    flags = []
+    mapping = [(0, 'under-voltage now'), (1, 'frequency capped now'), (2, 'throttled now'), (3, 'soft temp limit now'), (16, 'under-voltage occurred'), (17, 'frequency capped occurred'), (18, 'throttled occurred'), (19, 'soft temp limit occurred')]
+    for bit, label in mapping:
+        if code & (1 << bit):
+            flags.append(label)
+    return {'raw': raw or 'n/a', 'code': code, 'flags': flags, 'ok': not flags}
+
+
+def _cpu_live_status() -> Dict[str, Any]:
+    now = time.time()
+    cur = _cpu_times()
+    prev = _MEM_CACHE.get('cpu_times_prev')
+    _MEM_CACHE['cpu_times_prev'] = {'ts': now, 'data': cur}
+    pct = None
+    if cur and prev and isinstance(prev.get('data'), dict):
+        old = prev['data']
+        idle_now = cur.get('idle', 0) + cur.get('iowait', 0)
+        idle_old = int(old.get('idle', 0)) + int(old.get('iowait', 0))
+        total_now = sum(cur.values())
+        total_old = sum(int(v) for v in old.values())
+        total_delta = max(1, total_now - total_old)
+        idle_delta = max(0, idle_now - idle_old)
+        pct = round((1 - (idle_delta / total_delta)) * 100, 1)
+    cores = []
+    try:
+        for line in Path('/proc/stat').read_text().splitlines():
+            if re.match(r'^cpu\d+\s', line):
+                name = line.split()[0]
+                cores.append({'name': name, 'raw': [int(x) for x in line.split()[1:8]]})
+    except Exception:
+        pass
+    freq_mhz = None
+    try:
+        freq_mhz = round(int(Path('/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq').read_text().strip()) / 1000, 1)
+    except Exception:
+        pass
+    governor = ''
+    try:
+        governor = Path('/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor').read_text().strip()
+    except Exception:
+        pass
+    return {'available': bool(cur), 'percent': pct, 'freq_mhz': freq_mhz, 'governor': governor, 'model': _cpu_model(), 'cores': len(cores) or os.cpu_count() or 0, 'load_percent_1m': round((os.getloadavg()[0] / max(1, os.cpu_count() or 1)) * 100, 1) if hasattr(os, 'getloadavg') else None, 'throttle': _throttle_status()}
+
+
+def _disk_all_status() -> List[Dict[str, Any]]:
+    rows = []
+    text = run(['df', '-h', '-x', 'tmpfs', '-x', 'devtmpfs'], timeout=3)
+    for line in text.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 6:
+            rows.append({'filesystem': parts[0], 'size': parts[1], 'used': parts[2], 'avail': parts[3], 'use_percent': parts[4], 'mount': parts[5]})
+    return rows[:12]
+
+
+def _top_processes(limit: int = 10) -> List[Dict[str, Any]]:
+    rows = []
+    text = run(['ps', '-eo', 'pid,comm,%cpu,%mem', '--sort=-%cpu'], timeout=3)
+    for line in text.splitlines()[1:limit+1]:
+        parts = line.split(None, 3)
+        if len(parts) >= 4:
+            rows.append({'pid': parts[0], 'command': parts[1], 'cpu': parts[2], 'memory': parts[3]})
+    return rows
+
+
+def _running_services(limit: int = 18) -> List[Dict[str, Any]]:
+    rows = []
+    text = run(['systemctl', 'list-units', '--type=service', '--state=running', '--no-legend', '--no-pager'], timeout=4)
+    for line in text.splitlines()[:limit]:
+        parts = line.split(None, 4)
+        if parts:
+            rows.append({'unit': parts[0], 'load': parts[1] if len(parts)>1 else '', 'active': parts[2] if len(parts)>2 else 'running', 'description': parts[4] if len(parts)>4 else ''})
+    return rows
 
 
 def _net_io_status() -> Dict[str, Any]:
@@ -233,10 +357,14 @@ def system_status() -> Dict[str, Any]:
         'cpu_temp_c': temp,
         'cpu_temp_f': round((temp * 9 / 5) + 32, 1) if isinstance(temp, (int, float)) else None,
         'load': _load_status(),
+        'cpu_live': _cpu_live_status(),
         'memory': _mem_status(),
         'ips': run(['hostname', '-I'], timeout=2).strip().split(),
         'disk_root': disk_root,
+        'disk_all': _disk_all_status(),
         'net_io': _net_io_status(),
+        'top_processes': _top_processes(),
+        'running_services': _running_services(),
         'fan': fan_status(),
     }
 
@@ -252,23 +380,58 @@ def service_status(names=('jellyfin', 'ssh', 'tailscaled', 'gpsd')) -> Dict[str,
     return cached('services', 8, collect)
 
 
+def _tilt_level_raw() -> int:
+    try:
+        sensors = load_config().setdefault('sensors', {})
+        return int(sensors.get('tilt_level_raw', 1))
+    except Exception:
+        return 1
+
+
+def _normalize_tilt(raw: Any) -> tuple[str, int, int]:
+    level_raw = _tilt_level_raw()
+    try:
+        raw_i = int(raw)
+    except Exception:
+        return 'UNKNOWN', 0, level_raw
+    if raw_i == level_raw:
+        return 'LEVEL', 0, level_raw
+    return 'TILTED', 28, level_raw
+
+
+def calibrate_tilt_level(raw: Any | None = None) -> Dict[str, Any]:
+    if raw is None:
+        try:
+            import RPi.GPIO as GPIO  # type: ignore
+            GPIO.setwarnings(False)
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(22, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            raw = int(GPIO.input(22))
+            GPIO.cleanup(22)
+        except Exception as exc:
+            return {'ok': False, 'error': str(exc)}
+    try:
+        raw_i = int(raw)
+    except Exception:
+        return {'ok': False, 'error': f'invalid raw tilt value: {raw!r}'}
+    cfg = load_config()
+    cfg.setdefault('sensors', {})['tilt_level_raw'] = raw_i
+    save_config(cfg)
+    state_file = DATA_DIR / 'tilt_state.json'
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    state_file.write_text(json.dumps({'current': f'{raw_i}:LEVEL', 'ts': time.time(), 'raw': raw_i, 'orientation': 'LEVEL'}))
+    return {'ok': True, 'raw': raw_i, 'orientation': 'LEVEL', 'message': f'CrowPi tilt calibrated: raw {raw_i} is LEVEL.'}
+
+
 def _annotate_tilt_event(data: Dict[str, Any]) -> Dict[str, Any]:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     state_file = DATA_DIR / 'tilt_state.json'
     gpio = data.get('gpio', {}) if isinstance(data, dict) else {}
     raw = gpio.get('tilt')
-    # CrowPi tilt switch is digital, not a full accelerometer. On this unit's
-    # current mounting, raw 0 is the physical level/resting state. raw 1 is the
-    # tripped state, so only raw 1 should look/sound tilted.
-    if raw == 0:
-        orientation = 'LEVEL'
-        angle = 0
-    elif raw == 1:
-        orientation = 'TILTED'
-        angle = 28
-    else:
-        orientation = 'UNKNOWN'
-        angle = 0
+    # CrowPi tilt is a binary switch, not an accelerometer. Interpret it through
+    # the user-calibrated physical level raw value, and keep raw visible in the UI.
+    orientation, angle, level_raw = _normalize_tilt(raw)
+    gpio['tiltLevelRaw'] = level_raw
     gpio['tiltRaw'] = raw
     gpio['tiltOrientation'] = orientation
     gpio['tiltAngle'] = angle
@@ -276,7 +439,7 @@ def _annotate_tilt_event(data: Dict[str, Any]) -> Dict[str, Any]:
     data['gpio'] = gpio
     current = f'{raw}:{orientation}' if raw is not None else orientation
     now = time.time()
-    event = {'changed': False, 'fast': False, 'current': current, 'previous': None, 'age_s': None, 'raw': raw, 'orientation': orientation, 'angle': angle}
+    event = {'changed': False, 'fast': False, 'current': current, 'previous': None, 'age_s': None, 'raw': raw, 'orientation': orientation, 'angle': angle, 'level_raw': level_raw}
     try:
         previous = json.loads(state_file.read_text()) if state_file.exists() else {}
     except Exception:
@@ -303,7 +466,8 @@ def tilt_status() -> Dict[str, Any]:
         GPIO.setup(22, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         raw = int(GPIO.input(22))
         GPIO.cleanup(22)
-        data['gpio'].update({'available': True, 'tilt': raw, 'tiltLabel': 'LEVEL' if raw == 0 else 'TILTED'})
+        orientation, _angle, level_raw = _normalize_tilt(raw)
+        data['gpio'].update({'available': True, 'tilt': raw, 'tiltLevelRaw': level_raw, 'tiltLabel': orientation})
     except Exception as exc:
         data['gpio']['error'] = str(exc)
     annotated = _annotate_tilt_event(data)
@@ -588,6 +752,8 @@ def parse_iw_dev_interfaces(text: str) -> List[Dict[str, Any]]:
         if line.startswith('Interface '):
             current = {'name': line.split(None, 1)[1], 'type': None, 'channel': None}
             ifaces.append(current)
+        elif line.startswith('Unnamed/non-netdev interface'):
+            current = {}
         elif current and line.startswith('type '):
             current['type'] = line.split(None, 1)[1]
         elif current and line.startswith('channel '):
@@ -642,11 +808,7 @@ def pwn_channel_plan(networks: List[Dict[str, Any]], supported_channels: List[in
 
 
 def build_owned_lab_capture_plan(interface: str, bssid: str = '', channel: int | None = None, owned_lab: bool = False, capture_dir: str = '/home/pi/spac3-gh0st/data/handshakes') -> Dict[str, Any]:
-    """Return a passive WPA handshake capture command plan for an owned lab only.
-
-    The plan deliberately does not execute and deliberately excludes deauth. A
-    future run endpoint should require an explicit per-run owned_lab=true gate.
-    """
+    """Return a passive WPA handshake capture command plan for an owned lab only."""
     if not owned_lab:
         return {'ok': False, 'error': 'Refusing capture plan without owned_lab=true. Use only against CAK3D-owned lab networks/adapters.'}
     if not interface:
@@ -668,8 +830,178 @@ def build_owned_lab_capture_plan(interface: str, bssid: str = '', channel: int |
     }
 
 
+def _pid_alive(pid: int) -> bool:
+    if not pid:
+        return False
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except Exception:
+        return False
+
+
+def _capture_files(prefix: str | None = None) -> List[Dict[str, Any]]:
+    HANDSHAKE_DIR.mkdir(parents=True, exist_ok=True)
+    rows: List[Dict[str, Any]] = []
+    suffixes = ('.cap', '.pcap', '.pcapng', '.csv', '.kismet.csv', '.netxml', '.log')
+    prefix_name = Path(prefix).name if prefix else ''
+    for path in sorted(HANDSHAKE_DIR.glob('*'), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True):
+        if not path.is_file():
+            continue
+        if prefix_name and not path.name.startswith(prefix_name):
+            continue
+        if not any(path.name.endswith(s) for s in suffixes):
+            continue
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        rows.append({
+            'name': path.name,
+            'path': str(path),
+            'size': stat.st_size,
+            'modified': int(stat.st_mtime),
+            'kind': 'pcap' if path.suffix in ('.cap', '.pcap', '.pcapng') else ('log' if path.suffix == '.log' else 'metadata'),
+        })
+    return rows[:80]
+
+
+def handshake_capture_status() -> Dict[str, Any]:
+    """Return passive capture state plus captured artifacts."""
+    state: Dict[str, Any] = {}
+    if CAPTURE_STATE_FILE.exists():
+        try:
+            state = json.loads(CAPTURE_STATE_FILE.read_text())
+        except Exception as exc:
+            state = {'ok': False, 'error': f'capture state unreadable: {exc}'}
+    pid = int(state.get('pid') or 0) if isinstance(state, dict) else 0
+    files = _capture_files(state.get('prefix') if isinstance(state, dict) else None)
+    return {
+        'ok': True,
+        'mode': 'passive-owned-lab-capture-status',
+        'running': _pid_alive(pid),
+        'state': state,
+        'files': files,
+        'pcaps': [f for f in files if f.get('kind') == 'pcap'],
+        'handshake_detection': 'pcap artifacts are collected; validate owned-home/lab captures with aircrack-ng or Wireshark',
+    }
+
+
+def stop_owned_lab_capture() -> Dict[str, Any]:
+    """Stop the recorded passive owned-lab capture process, if one exists."""
+    status = handshake_capture_status()
+    state = status.get('state') or {}
+    pid = int(state.get('pid') or 0)
+    if not pid:
+        return {'ok': False, 'error': 'no recorded capture pid', 'status': status}
+    if not status.get('running'):
+        return {'ok': True, 'stopped': False, 'message': 'capture process is already stopped', 'status': status}
+    try:
+        os.kill(pid, 15)
+    except Exception as exc:
+        return {'ok': False, 'error': f'failed to stop capture pid {pid}: {exc}', 'status': status}
+    time.sleep(0.2)
+    return {'ok': True, 'stopped': True, 'pid': pid, 'status': handshake_capture_status()}
+
+
 def _monitor_interfaces(adapter: Dict[str, Any]) -> List[str]:
     return [i.get('name') for i in adapter.get('interfaces', []) if i.get('name') and i.get('type') == 'monitor']
+
+
+def _preferred_external_wifi(adapter: Dict[str, Any]) -> Dict[str, Any] | None:
+    """Pick a USB Wi-Fi adapter for RF work without touching wlan0."""
+    interfaces = adapter.get('interfaces', []) or []
+    external = set(adapter.get('external_adapters') or [])
+    for iface in interfaces:
+        name = str(iface.get('name') or '')
+        if not name or name == 'wlan0':
+            continue
+        if name in external and iface.get('type') in ('managed', 'monitor', None):
+            return iface
+    for iface in interfaces:
+        name = str(iface.get('name') or '')
+        if name and name != 'wlan0':
+            return iface
+    return None
+
+
+def monitor_mode_status(adapter: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    """Readiness for the external USB dongle monitor-mode workflow."""
+    adapter = adapter or _iw_capabilities()
+    monitors = _monitor_interfaces(adapter)
+    preferred = _preferred_external_wifi(adapter) or {}
+    base = str(preferred.get('name') or '')
+    tools = adapter.get('tools') or {}
+    can_enable = bool(base and base != 'wlan0' and adapter.get('monitor_supported') and (tools.get('airmon-ng') or tools.get('iw')))
+    return {
+        'monitor_interfaces': monitors,
+        'active': bool(monitors),
+        'preferred_interface': base,
+        'preferred_driver': preferred.get('driver') or '',
+        'preferred_type': preferred.get('type') or '',
+        'monitor_interface_hint': monitors[0] if monitors else (base + 'mon' if base else 'wlan1mon'),
+        'can_enable': can_enable,
+        'can_disable': bool(monitors),
+        'wlan0_protected': True,
+        'ready_label': ('monitor interface live' if monitors else ('USB dongle ready; prep monitor mode when needed' if can_enable else 'no safe external monitor adapter ready')),
+        'note': 'wlan0 stays managed/connected; monitor prep targets the external USB dongle only.',
+    }
+
+
+def set_monitor_mode(action: str, interface: str = '') -> Dict[str, Any]:
+    """Enable/disable monitor mode on the external USB adapter only.
+
+    Separate from capture start. Never targets wlan0 and never deauths/injects/cracks.
+    """
+    action = str(action or '').strip().lower()
+    adapter = _iw_capabilities()
+    status = monitor_mode_status(adapter)
+    if action in ('status', 'check', ''):
+        return {'ok': True, 'action': 'status', 'adapter': adapter, 'monitor': status}
+    base = str(interface or status.get('preferred_interface') or '').strip()
+    if action in ('enable', 'start', 'prep'):
+        if not base or base == 'wlan0':
+            return {'ok': False, 'error': 'No safe external USB Wi-Fi interface selected; wlan0 is protected.', 'adapter': adapter, 'monitor': status}
+        if status.get('active'):
+            return {'ok': True, 'message': f"Monitor mode already active on {', '.join(status.get('monitor_interfaces') or [])}.", 'adapter': adapter, 'monitor': status}
+        names = {i.get('name') for i in adapter.get('interfaces', []) or []}
+        if base not in names:
+            return {'ok': False, 'error': f'Interface {base} is not visible right now.', 'adapter': adapter, 'monitor': status}
+        if not status.get('can_enable'):
+            return {'ok': False, 'error': status.get('ready_label') or 'Monitor mode cannot be safely enabled right now.', 'adapter': adapter, 'monitor': status}
+        cmd = [_cmd_path('airmon-ng'), 'start', base] if shutil.which('airmon-ng') else [_cmd_path('iw'), 'dev', base, 'set', 'type', 'monitor']
+        try:
+            cp = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=25)
+        except Exception as exc:
+            return {'ok': False, 'error': f'monitor prep failed: {exc}', 'adapter': adapter, 'monitor': status}
+        time.sleep(1.0)
+        after = _iw_capabilities()
+        after_status = monitor_mode_status(after)
+        ok = bool(after_status.get('active'))
+        return {
+            'ok': ok, 'action': 'enable', 'interface': base, 'cmd': ' '.join(cmd),
+            'stdout': cp.stdout.strip()[-1200:], 'stderr': cp.stderr.strip()[-1200:],
+            'message': f"Monitor mode ready on {', '.join(after_status.get('monitor_interfaces') or [])}; wlan0 left alone." if ok else 'Monitor prep ran but no monitor interface appeared.',
+            'adapter': after, 'monitor': after_status,
+        }
+    if action in ('disable', 'stop'):
+        monitors = status.get('monitor_interfaces') or []
+        target = base if base in monitors else (monitors[0] if monitors else '')
+        if not target:
+            return {'ok': True, 'message': 'No monitor interface is active.', 'adapter': adapter, 'monitor': status}
+        cmd = [_cmd_path('airmon-ng'), 'stop', target] if shutil.which('airmon-ng') else [_cmd_path('ip'), 'link', 'set', target, 'down']
+        try:
+            cp = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=25)
+        except Exception as exc:
+            return {'ok': False, 'error': f'monitor stop failed: {exc}', 'adapter': adapter, 'monitor': status}
+        time.sleep(1.0)
+        after = _iw_capabilities()
+        return {'ok': True, 'action': 'disable', 'interface': target, 'cmd': ' '.join(cmd), 'stdout': cp.stdout.strip()[-1200:], 'stderr': cp.stderr.strip()[-1200:], 'message': f'Monitor interface {target} stop requested; wlan0 untouched.', 'adapter': after, 'monitor': monitor_mode_status(after)}
+    return {'ok': False, 'error': 'unsupported monitor action', 'adapter': adapter, 'monitor': status}
 
 
 def start_owned_lab_capture(body: Dict[str, Any], popen_factory=None) -> Dict[str, Any]:
@@ -682,6 +1014,9 @@ def start_owned_lab_capture(body: Dict[str, Any], popen_factory=None) -> Dict[st
     adapter = _iw_capabilities()
     monitor_ifaces = _monitor_interfaces(adapter)
     interface = str(body.get('interface') or (monitor_ifaces[0] if monitor_ifaces else '')).strip()
+    current = handshake_capture_status()
+    if current.get('running'):
+        return {'ok': False, 'error': 'a passive capture is already running; stop it before starting another', 'status': current}
     plan = build_owned_lab_capture_plan(interface, bssid=bssid, channel=channel, owned_lab=owned_lab, capture_dir=str(HANDSHAKE_DIR))
     if not plan.get('ok'):
         return plan
@@ -701,7 +1036,7 @@ def start_owned_lab_capture(body: Dict[str, Any], popen_factory=None) -> Dict[st
     log_path = HANDSHAKE_DIR / f'owned-lab-{started}.log'
     with log_path.open('ab') as log:
         proc = popen_factory(argv, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-    state = {'ok': True, 'mode': 'passive-owned-lab-capture', 'pid': int(getattr(proc, 'pid', 0) or 0), 'argv': argv, 'started': started, 'prefix': str(prefix), 'log': str(log_path), 'blocked': ['deauth automation', 'third-party networks', 'credential cracking']}
+    state = {'ok': True, 'mode': 'passive-owned-lab-capture', 'pid': int(getattr(proc, 'pid', 0) or 0), 'argv': argv, 'started': started, 'prefix': str(prefix), 'log': str(log_path), 'interface': interface, 'bssid': bssid, 'channel': channel, 'blocked': ['deauth automation', 'third-party networks', 'credential cracking']}
     CAPTURE_STATE_FILE.write_text(json.dumps(state, indent=2))
     return state
 
@@ -750,13 +1085,16 @@ def _iw_capabilities() -> Dict[str, Any]:
         name: bool(shutil.which(name) or Path(f'/usr/bin/{name}').exists() or Path(f'/usr/sbin/{name}').exists())
         for name in ['airmon-ng', 'aircrack-ng', 'airodump-ng', 'aireplay-ng', 'bettercap', 'nmap', 'hcxdumptool', 'hcxpcapngtool']
     }
-    monitor_supported = 'monitor' in modes
+    # rtl88XXau/8812au dongles may not expose every mode cleanly in iw phy on
+    # Raspberry Pi kernels, but airmon-ng can still prep them. Require a real
+    # monitor interface before capture; this flag is only UI/readiness.
+    monitor_supported = 'monitor' in modes or any(str(d).lower() in ('rtl88xxau', '88xxau', 'rtl8812au', '8812au') for d in drivers.values())
     note = (
         'monitor mode supported by detected phy; use only on CAK3D-owned lab networks'
         if monitor_supported else
         'detected Wi-Fi phy does not advertise monitor mode; add a USB adapter with monitor+injection support for Pwnagotchi-style RF capture'
     )
-    return {
+    result = {
         'available': bool(dev.strip() and not dev.startswith('ERROR')),
         'interfaces': ifaces,
         'modes': modes,
@@ -767,6 +1105,8 @@ def _iw_capabilities() -> Dict[str, Any]:
         'supported_channels': channels,
         'raw_note': note,
     }
+    result['monitor_setup'] = monitor_mode_status(result)
+    return result
 
 
 def _wifi_security_flags(networks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -811,10 +1151,13 @@ def rf_audit_status(force: bool = False) -> Dict[str, Any]:
         warnings = _wifi_security_flags(networks)
         adapter = _iw_capabilities()
         channel_plan = pwn_channel_plan(networks, adapter.get('supported_channels') or [])
+        monitor_setup = adapter.get('monitor_setup') or monitor_mode_status(adapter)
         capture_plan = build_owned_lab_capture_plan(
             next((i.get('name') for i in adapter.get('interfaces', []) if i.get('type') == 'monitor'), ''),
             owned_lab=False,
         )
+        capture_plan['monitor_setup'] = monitor_setup
+        capture_status = handshake_capture_status()
         saved = _saved_wifi_audit()
         weak_saved = [row for row in saved if row.get('password_strength', {}).get('score', 0) < 55 and row.get('has_password')]
         bt_warnings = []
@@ -838,7 +1181,10 @@ def rf_audit_status(force: bool = False) -> Dict[str, Any]:
                     'epoch_ready': bool(networks),
                     'channel_plan': channel_plan,
                     'handshake_capture': capture_plan,
-                    'pattern': 'Pwnagotchi observes AP/client/channel state, prioritizes channels, and records handshakes from bettercap/pcap events. Spac3-Gh0st exposes the same readiness/plan layer now; actual capture remains gated for owned lab use and needs monitor-capable adapter.',
+                    'monitor_setup': monitor_setup,
+                    'capture_status': capture_status,
+                    'captured_pcaps': capture_status.get('pcaps', []),
+                    'pattern': 'Pwnagotchi observes AP/client/channel state, prioritizes channels, and records handshakes from bettercap/pcap events. Spac3-Gh0st now exposes owned-lab passive capture lifecycle and artifact tracking for monitor-capable adapters.',
                 },
             },
             'bluetooth': {
@@ -903,7 +1249,7 @@ def weather_status(gps: Dict[str, Any] | None = None) -> Dict[str, Any]:
         weather = {
             'available': False, 'source': source, 'location': None, 'lat': lat, 'lon': lon,
             'summary': None, 'tempC': None, 'tempF': None, 'humidity': None, 'windMph': None,
-            'forecast': [], 'radar': {'provider': 'OpenWeatherMap', 'configured': bool(_openweather_key()), 'layers': ['precipitation_new', 'clouds_new', 'wind_new'], 'tile_proxy': '/api/weather/tile/{layer}/{z}/{x}/{y}.png'},
+            'forecast': [], 'sunrise': None, 'sunset': None, 'moonrise': None, 'moonset': None, 'radar': {'provider': 'OpenWeatherMap', 'configured': bool(_openweather_key()), 'layers': ['precipitation_new', 'clouds_new', 'wind_new'], 'tile_proxy': '/api/weather/tile/{layer}/{z}/{x}/{y}.png'},
             'provider': 'wttr.in + optional OpenWeatherMap tiles', 'error': None,
         }
         try:
@@ -924,7 +1270,13 @@ def weather_status(gps: Dict[str, Any] | None = None) -> Dict[str, Any]:
             temp_c = _float_or_none(current.get('temp_C'))
             humidity = _float_or_none(current.get('humidity'))
             forecast = []
-            for day in (data.get('weather') or [])[:3]:
+            for i, day in enumerate((data.get('weather') or [])[:5]):
+                astronomy = (day.get('astronomy') or [{}])[0]
+                if i == 0:
+                    weather['sunrise'] = astronomy.get('sunrise')
+                    weather['sunset'] = astronomy.get('sunset')
+                    weather['moonrise'] = astronomy.get('moonrise')
+                    weather['moonset'] = astronomy.get('moonset')
                 hourly = (day.get('hourly') or [{}])
                 noon = hourly[min(len(hourly)-1, 4)] if hourly else {}
                 ddesc = noon.get('weatherDesc') or []
@@ -952,18 +1304,77 @@ def weather_status(gps: Dict[str, Any] | None = None) -> Dict[str, Any]:
 
 
 def security_stack_status() -> Dict[str, Any]:
-    """Defensive-only inspiration/status from Security Onion, OpenNMS, P4wnP1, and HoneyPi-style tooling."""
+    """Native Security Lab-style blue-team board: hardening, IDS, honeypot, logs/dashboard."""
     def tool(name: str) -> bool:
         return bool(shutil.which(name))
-    def service(name: str) -> bool:
-        return run(['systemctl', 'is-active', name], timeout=2).strip() == 'active'
-    stacks = [
-        {'id': 'security_onion', 'label': 'Security Onion ideas', 'installed': any(tool(t) for t in ('suricata', 'zeek', 'so-status')), 'signals': ['Suricata IDS alerts', 'Zeek connection logs', 'PCAP/event triage'], 'safe_use': 'Mirror/ingest LAN telemetry; do not run heavy SO stack on this Pi unless offloaded.'},
-        {'id': 'opennms', 'label': 'OpenNMS ideas', 'installed': service('opennms') or tool('opennms'), 'signals': ['service uptime', 'SNMP/ping reachability', 'threshold alerts'], 'safe_use': 'Use for inventory/availability monitoring of your own nodes.'},
-        {'id': 'honeypi', 'label': 'HoneyPi/Cowrie ideas', 'installed': service('cowrie') or service('opencanary') or tool('cowrie'), 'signals': ['fake SSH/HTTP probes', 'connection attempts', 'source IP log'], 'safe_use': 'Defensive honeypot only; isolated ports, no credential reuse.'},
-        {'id': 'p4wnp1', 'label': 'P4wnP1 A.L.O.A. inspiration', 'installed': False, 'signals': ['USB mode awareness', 'payload library status', 'physical-access warning'], 'safe_use': 'Dashboard can show defensive USB posture; HID injection/offensive payloads stay blocked.'},
+    def svc_state(name: str) -> Dict[str, Any]:
+        active = run(['systemctl', 'is-active', name], timeout=2).strip() or 'unknown'
+        enabled = run(['systemctl', 'is-enabled', name], timeout=2).strip() or 'unknown'
+        return {'name': name, 'active': active == 'active', 'enabled': enabled == 'enabled', 'active_text': active, 'enabled_text': enabled}
+    def file_exists(path: str) -> bool:
+        try:
+            return Path(path).exists()
+        except Exception:
+            return False
+    repo_paths = ['/home/pi/apps/raspberry-pi-security-lab', '/home/pi/raspberry-pi-security-lab']
+    repo_present = [p for p in repo_paths if file_exists(p)]
+    ufw = run(['sh', '-lc', 'ufw status 2>/dev/null | head -1'], timeout=2).strip()
+    fail2ban = svc_state('fail2ban')
+    suricata = svc_state('suricata')
+    cowrie = svc_state('cowrie')
+    grafana = svc_state('grafana-server')
+    loki = svc_state('loki')
+    promtail = svc_state('promtail')
+    lanes = [
+        {
+            'id': 'hardening', 'label': 'Phase 1 // Hardening', 'icon': '🛡️',
+            'state': 'detected' if (tool('ufw') or fail2ban['active']) else 'staged',
+            'installed': tool('ufw') or tool('fail2ban-client') or fail2ban['active'],
+            'score': sum([tool('ufw'), tool('fail2ban-client'), fail2ban['active'], 'Status: active' in ufw]),
+            'signals': [f'UFW: {ufw or ("installed" if tool("ufw") else "missing")}', f'fail2ban: {fail2ban["active_text"]}/{fail2ban["enabled_text"]}', 'SSH/firewall hardening is review-first on this Tailscale Pi'],
+            'safe_use': 'Surface firewall/fail2ban/SSH posture. Do not apply hardening scripts from a generic button.'
+        },
+        {
+            'id': 'ids', 'label': 'Phase 2 // IDS', 'icon': '📡',
+            'state': 'running' if suricata['active'] else ('installed' if tool('suricata') else 'staged'),
+            'installed': tool('suricata') or suricata['active'],
+            'score': sum([tool('suricata'), suricata['active'], file_exists('/var/log/suricata/eve.json'), file_exists('/var/log/suricata/fast.log')]),
+            'signals': [f'Suricata: {suricata["active_text"]}/{suricata["enabled_text"]}', f'eve.json: {file_exists("/var/log/suricata/eve.json")}', f'fast.log: {file_exists("/var/log/suricata/fast.log")}'],
+            'safe_use': 'Show IDS readiness and log presence. Interface/rule install needs explicit approval.'
+        },
+        {
+            'id': 'honeypot', 'label': 'Phase 3 // Honeypot', 'icon': '🍯',
+            'state': 'running' if cowrie['active'] else ('installed' if (tool('cowrie') or file_exists('/opt/cowrie')) else 'staged'),
+            'installed': tool('cowrie') or file_exists('/opt/cowrie') or cowrie['active'],
+            'score': sum([tool('cowrie'), file_exists('/opt/cowrie'), cowrie['active'], file_exists('/opt/cowrie/var/log/cowrie/cowrie.json')]),
+            'signals': [f'Cowrie: {cowrie["active_text"]}/{cowrie["enabled_text"]}', f'/opt/cowrie: {file_exists("/opt/cowrie")}', f'cowrie.json: {file_exists("/opt/cowrie/var/log/cowrie/cowrie.json")}'],
+            'safe_use': 'Defensive decoy only; bind/isolate deliberately and never reuse real credentials.'
+        },
+        {
+            'id': 'dashboard', 'label': 'Phase 4 // Logs + Dashboard', 'icon': '📊',
+            'state': 'running' if grafana['active'] else ('installed' if tool('grafana-cli') else 'staged'),
+            'installed': tool('grafana-cli') or grafana['active'] or loki['active'] or promtail['active'],
+            'score': sum([grafana['active'], loki['active'], promtail['active'], tool('grafana-cli')]),
+            'signals': [f'Grafana: {grafana["active_text"]}/{grafana["enabled_text"]}', f'Loki: {loki["active_text"]}/{loki["enabled_text"]}', f'Promtail: {promtail["active_text"]}/{promtail["enabled_text"]}'],
+            'safe_use': 'Use Grafana/Loki/Promtail ideas for live Spac3-Gh0st panels or link to Grafana if installed.'
+        },
     ]
-    return {'available': True, 'mode': 'defensive-only', 'stacks': stacks, 'recommendations': ['Start with HoneyPi/Cowrie on an isolated port/VLAN if you want a honeypot.', 'Use Security Onion/OpenNMS as upstream dashboards and surface summaries here.', 'Keep P4wnP1 ideas limited to passive USB/physical-security status on this build.']}
+    stacks = [
+        {'id': 'securitylab', 'label': 'Raspberry Pi Security Lab', 'installed': bool(repo_present), 'signals': [f'repo paths: {", ".join(repo_present) if repo_present else "not cloned"}', 'scripts: hardening, Suricata, Cowrie, dashboard'], 'safe_use': 'Source integration only until each script is reviewed and approved.'},
+        {'id': 'security_onion', 'label': 'Security Onion ideas', 'installed': any(tool(t) for t in ('suricata', 'zeek', 'so-status')), 'signals': ['Suricata IDS alerts', 'Zeek connection logs', 'PCAP/event triage', f"tools suricata={tool('suricata')} zeek={tool('zeek')}"], 'safe_use': 'Mirror/ingest LAN telemetry; do not run heavy SO stack on this Pi unless offloaded.'},
+        {'id': 'honeypi', 'label': 'HoneyPi/Cowrie ideas', 'installed': cowrie['active'] or tool('cowrie'), 'signals': ['fake SSH/HTTP probes', 'connection attempts', 'source IP log'], 'safe_use': 'Defensive honeypot only; isolated ports, no credential reuse.'},
+    ]
+    return {
+        'available': True,
+        'mode': 'Security Lab blue-team board // defensive-only',
+        'source': 'https://github.com/ExploitGd/raspberry-pi-security-lab',
+        'architecture': ['UFW/fail2ban hardening', 'Suricata IDS', 'Cowrie honeypot', 'Promtail/Loki/Grafana dashboard'],
+        'repo_present': bool(repo_present),
+        'repo_paths': repo_present,
+        'lanes': lanes,
+        'stacks': stacks,
+        'recommendations': ['Clone/stage the repo first, then review each script before running.', 'Surface Suricata/Cowrie/Grafana status here even when the upstream dashboard is not installed.', 'Keep firewall/SSH hardening manual so Tailscale recovery stays safe.']
+    }
 
 
 
@@ -1037,6 +1448,90 @@ def update_known_device(kind: str, device_id: str, label: str | None = None, tru
     return {'ok': True, 'device': rec, 'known_devices': known_devices_status()}
 
 
+def _wifi_network_by_ssid(ssid: str, status: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    ssid = str(ssid or '').strip()
+    wifi = status.get('wifi', {}) if isinstance(status, dict) else wifi_status(False)
+    for n in wifi.get('networks', []) or []:
+        if str(n.get('ssid') or '').strip() == ssid:
+            return dict(n)
+    return {'ssid': ssid}
+
+
+def _strong_wifi_password(length: int = 20) -> str:
+    alphabet = string.ascii_letters + string.digits + '!@#$%^&*-_=+?'
+    return ''.join(secrets.choice(alphabet) for _ in range(max(16, min(int(length or 20), 32))))
+
+
+def wifi_psk_action(ssid: str, action: str) -> Dict[str, Any]:
+    """Concrete actions for weak saved PSK warnings without leaking secrets."""
+    ssid = str(ssid or '').strip()
+    action = str(action or '').strip().lower()
+    if not ssid or ssid == '<hidden>':
+        return {'ok': False, 'error': 'Pick a named saved Wi-Fi profile first.'}
+    saved = _saved_wifi_audit()
+    row = next((r for r in saved if str(r.get('ssid') or '') == ssid or str(r.get('name') or '') == ssid), None)
+    if not row:
+        return {'ok': False, 'error': f'No saved NetworkManager profile found for {ssid}.'}
+    if action == 'review':
+        data = _read_json_file(WIFI_PSK_ACTIONS_FILE, {})
+        data[ssid] = {'reviewed_at': int(time.time()), 'score': (row.get('password_strength') or {}).get('score'), 'note': 'User reviewed weak PSK warning; router password must be changed on router/admin UI.'}
+        _write_json_file(WIFI_PSK_ACTIONS_FILE, data)
+        return {'ok': True, 'action': action, 'ssid': ssid, 'message': f'{ssid} weak-PSK warning marked reviewed. Actual fix is changing the router/AP password, then updating this saved profile.'}
+    if action == 'generate':
+        pw = _strong_wifi_password(22)
+        return {'ok': True, 'action': action, 'ssid': ssid, 'password': pw, 'message': f'Generated a strong replacement password for {ssid}. Change it in the router/AP admin UI first, then reconnect devices.'}
+    if action == 'forget':
+        name = str(row.get('name') or ssid)
+        cp = subprocess.run(['nmcli', 'connection', 'delete', name], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+        return {'ok': cp.returncode == 0, 'action': action, 'ssid': ssid, 'profile': name, 'stdout': cp.stdout.strip(), 'stderr': cp.stderr.strip(), 'message': f'Deleted saved Wi-Fi profile {name}. Reconnect after fixing the router/AP password.' if cp.returncode == 0 else f'Failed to delete profile {name}.'}
+    return {'ok': False, 'error': 'Unsupported weak-PSK action. Use review, generate, or forget.'}
+
+
+def wifi_target_action(ssid: str, action: str, label: str | None = None) -> Dict[str, Any]:
+    """Safe Wi-Fi row actions for the dashboard: memory + local audit only."""
+    ssid = str(ssid or '').strip()
+    action = str(action or '').strip().lower()
+    if not ssid or ssid == '<hidden>':
+        return {'ok': False, 'error': 'Select a named Wi-Fi network first.'}
+    if action not in ('remember', 'trust', 'watch', 'untrust', 'unwatch', 'name', 'audit', 'connect-plan'):
+        return {'ok': False, 'error': 'Unsupported Wi-Fi action. Allowed: remember/trust/watch/name/audit/connect-plan.'}
+    net = _wifi_network_by_ssid(ssid)
+    key_result: Dict[str, Any] | None = None
+    if action in ('remember', 'trust', 'watch', 'untrust', 'unwatch', 'name'):
+        key_result = update_known_device(
+            'wifi', ssid,
+            label=label if action == 'name' else None,
+            trusted=True if action == 'trust' else False if action == 'untrust' else None,
+            watched=True if action == 'watch' else False if action == 'unwatch' else None,
+        )
+    saved = _saved_wifi_audit()
+    saved_row = next((r for r in saved if str(r.get('ssid') or '') == ssid), None)
+    warnings = [w for w in _wifi_security_flags([net]) if w.get('ssid') == ssid]
+    signal = int(net.get('signal') or 0) if str(net.get('signal') or '').isdigit() else 0
+    channel = str(net.get('channel') or '')
+    security = str(net.get('security') or 'unknown')
+    findings = []
+    if signal:
+        findings.append(f'signal {signal}%')
+    if channel:
+        findings.append(f'channel {channel}')
+    findings.append(f'security {security}')
+    if saved_row:
+        ps = saved_row.get('password_strength') or {}
+        findings.append(f'saved profile: yes / strength {ps.get("label", "n/a")} {ps.get("score", "n/a")}%')
+    else:
+        findings.append('saved profile: not found or secret unavailable')
+    for w in warnings:
+        findings.extend(w.get('issues') or [])
+    if action == 'connect-plan':
+        msg = f'{ssid}: connect planning only. Use OS Wi-Fi settings/nmcli for actual connection; Spac3-Gh0st will not auto-join networks or expose credentials.'
+    elif action == 'audit':
+        msg = f'{ssid}: safe local audit complete.'
+    else:
+        msg = f'{ssid}: known-network memory updated.'
+    return {'ok': True, 'ssid': ssid, 'action': action, 'network': net, 'known_result': key_result, 'findings': findings, 'warnings': warnings, 'saved': bool(saved_row), 'message': msg}
+
+
 def known_devices_status(status: Dict[str, Any] | None = None) -> Dict[str, Any]:
     data = _known_map()
     devices = data.setdefault('devices', {})
@@ -1061,42 +1556,161 @@ def known_devices_status(status: Dict[str, Any] | None = None) -> Dict[str, Any]
     return {'available': True, 'total': len(rows), 'online': sum(1 for r in rows if r.get('online')), 'trusted': sum(1 for r in rows if r.get('trusted')), 'watched': sum(1 for r in rows if r.get('watched')), 'devices': rows[:80]}
 
 
+def household_signals_status(status: Dict[str, Any]) -> Dict[str, Any]:
+    """Correlate home signals so unknown scan hits stand out from household devices.
+
+    This is intentionally conservative: labels come from Spac3-Gh0st known-device
+    memory, configured external nodes, obvious local/Tailnet fixtures, and later
+    Home Assistant entity imports when credentials are added. It does not guess a
+    BT MAC is a light unless there is a remembered label or source evidence.
+    """
+    known = status.get('known_devices') or known_devices_status(status)
+    devices = known.get('devices') or []
+    external_labels = {
+        '192.168.18.42': 'Jeffeybot Raspberry Pi car',
+        '100.65.33.36': 'theBAK3RY Raspberry Pi / dashboards',
+        'thebak3ry': 'theBAK3RY Raspberry Pi / dashboards',
+    }
+    home_services = [
+        {'id': 'homeassistant', 'label': 'Home Assistant @ theBAK3RY', 'url': 'http://100.65.33.36:8123', 'role': 'entity source'},
+        {'id': 'heimdall', 'label': 'Heimdall @ theBAK3RY', 'url': 'http://100.65.33.36:8080', 'role': 'dashboard'},
+        {'id': 'ruview', 'label': 'RuView local mirror', 'url': 'http://100.75.120.80:8765/ruview/index.html', 'role': 'CSI/RF sensing UI'},
+    ]
+    rows = []
+    unknown = []
+    for d in devices[:80]:
+        key = d.get('key') or f"{d.get('kind')}:{d.get('id')}"
+        display = d.get('display') or d.get('last_name') or d.get('id') or key
+        label = d.get('label') or ''
+        identity = label or external_labels.get(str(d.get('id') or '')) or external_labels.get(str((d.get('last_meta') or {}).get('ip') or '')) or display
+        confidence = 'known-label' if label else ('fixture' if identity != display else ('trusted' if d.get('trusted') else 'unmapped'))
+        mapped = bool(label or d.get('trusted') or confidence == 'fixture')
+        row = {
+            'key': key, 'kind': d.get('kind'), 'id': d.get('id'), 'display': display,
+            'identity': identity, 'mapped': mapped, 'confidence': confidence,
+            'online': bool(d.get('online')), 'trusted': bool(d.get('trusted')), 'watched': bool(d.get('watched')),
+            'reason': 'labeled/trusted household device' if mapped else 'unmapped scan hit — should stick out until labeled/trusted/ignored',
+        }
+        rows.append(row)
+        if row['online'] and not row['mapped']:
+            unknown.append(row)
+    counts = {
+        'known_total': known.get('total', len(devices)), 'online': known.get('online', 0),
+        'mapped': sum(1 for r in rows if r['mapped']), 'unmapped_online': len(unknown),
+        'wifi': sum(1 for r in rows if r['kind'] == 'wifi'),
+        'bluetooth': sum(1 for r in rows if r['kind'] == 'bluetooth'),
+        'lan': sum(1 for r in rows if r['kind'] == 'lan'),
+    }
+    return {
+        'available': True,
+        'mode': 'household identity correlation',
+        'summary': f"{counts['mapped']} mapped // {counts['unmapped_online']} unmapped online // {counts['known_total']} remembered",
+        'counts': counts,
+        'services': home_services,
+        'home_assistant': {
+            'available': True,
+            'url': 'http://100.65.33.36:8123',
+            'entity_import': 'not configured yet — add a Home Assistant token/API bridge to map entities like Upstairs Light ↔ device/MAC/RSSI evidence',
+        },
+        'signals_used': ['LAN/ARP/IP neighbors', 'Wi‑Fi SSID/BSSID inventory', 'Bluetooth advertisements', 'known-device labels/trust/watch flags', 'external Pi/camera URLs', 'future Home Assistant entities'],
+        'blocked_actions': ['secret extraction', 'device takeover', 'unapproved pairing/control', 'guessing identities without evidence'],
+        'unknown_online': unknown[:12],
+        'mapped_devices': [r for r in rows if r['mapped']][:16],
+        'recent_devices': rows[:24],
+    }
+
+
 def _alert_status(status: Dict[str, Any]) -> Dict[str, Any]:
+    """Layered dashboard attention score.
+
+    The top-line meter is meant to answer: "should I look right now?" It should
+    stay green during normal advisories like a saved-password hygiene finding or
+    GPS temporarily lacking a fix. Those details still surface, but in calmer
+    advisory/hygiene layers instead of inflating the urgent score.
+    """
     score = 0
-    reasons: List[str] = []
+    urgent: List[Dict[str, Any]] = []
+    advisory: List[Dict[str, Any]] = []
+    hygiene: List[Dict[str, Any]] = []
+
+    def add_urgent(kind: str, points: int, text: str, **extra):
+        nonlocal score
+        score += points
+        urgent.append({'kind': kind, 'points': points, 'text': text, **extra})
+
+    def add_advisory(kind: str, text: str, points: int = 0, **extra):
+        advisory.append({'kind': kind, 'points': points, 'text': text, **extra})
+
+    def add_hygiene(kind: str, text: str, **extra):
+        hygiene.append({'kind': kind, 'points': 0, 'text': text, **extra})
+
     new_count = sum(int(status.get(k, {}).get('new_count', 0) or 0) for k in ('wifi', 'bluetooth', 'lan'))
     if new_count:
-        score += min(40, new_count * 12); reasons.append(f'{new_count} new contact(s)')
+        add_urgent('new_contacts', min(40, new_count * 12), f'{new_count} new contact(s)', count=new_count)
+
     vpn = status.get('vpn', {})
     if vpn and not vpn.get('active') and not (vpn.get('active_connections') or []):
-        score += 10; reasons.append('VPN off')
+        add_advisory('vpn_off', 'VPN off', points=0)
+
     sys = status.get('system', {})
     if isinstance(sys.get('cpu_temp_f'), (int, float)) and sys['cpu_temp_f'] >= 158:
-        score += 25; reasons.append('CPU hot')
+        add_urgent('cpu_hot', 25, 'CPU hot', temp_f=sys['cpu_temp_f'])
+
     mem_pct = (sys.get('memory') or {}).get('percent')
     if isinstance(mem_pct, (int, float)) and mem_pct >= 85:
-        score += 15; reasons.append('RAM pressure')
+        add_urgent('ram_pressure', 15, 'RAM pressure', percent=mem_pct)
+
     services = {**(status.get('services') or {}), **(status.get('controls') or {})}
     down = [k for k, v in services.items() if isinstance(v, dict) and k in ('tailscaled', 'gpsd', 'ssh', 'vnc', 'syncthing') and not v.get('active')]
     if down:
-        score += min(20, len(down) * 5); reasons.append('service down: ' + ', '.join(down[:3]))
+        add_urgent('service_down', min(20, len(down) * 5), 'service down: ' + ', '.join(down[:3]), services=down[:8])
+
     gps = (status.get('sensors') or {}).get('gps', {})
     if gps and not gps.get('fixed'):
-        score += 5; reasons.append('GPS no fix')
+        add_advisory('gps_no_fix', 'GPS no fix', points=0, satellites_visible=gps.get('satellitesVisible') or 0)
+
     rf = status.get('rf_audit', {})
     weak = ((rf.get('wifi') or {}).get('weak_saved_count') or 0)
     if weak:
-        score += min(20, weak * 8); reasons.append(f'{weak} weak saved PSK(s)')
+        add_hygiene(
+            'weak_saved_psk',
+            f'{weak} saved Wi-Fi password(s) look weak',
+            count=weak,
+            recommendation='Rotate owned/important networks to 16+ random characters; forget old saved networks.'
+        )
+
     known = status.get('known_devices', {})
     watched_online = [d.get('display') for d in known.get('devices', []) if d.get('watched') and d.get('online')]
     if watched_online:
-        score += 25; reasons.append('watched online: ' + ', '.join(watched_online[:3]))
+        add_advisory('watched_online', 'watched online: ' + ', '.join(watched_online[:3]), points=0, devices=watched_online[:8])
+
+    # If several non-urgent operational advisories pile up, nudge the meter a
+    # little without making hygiene alone look like an incident.
+    operational_advisories = [a for a in advisory if a['kind'] in ('vpn_off', 'gps_no_fix')]
+    if len(operational_advisories) >= 3:
+        score += 10
+        advisory.append({'kind': 'advisory_cluster', 'points': 10, 'text': 'several low-priority advisories active'})
+
     score = min(100, score)
     if score >= 75: level, color = 'RED', '#ff5f56'
     elif score >= 50: level, color = 'ORANGE', '#ff8c2e'
     elif score >= 25: level, color = 'YELLOW', '#ffbd2e'
     else: level, color = 'GREEN', '#27c93f'
-    return {'level': level, 'score': score, 'color': color, 'reasons': reasons or ['normal watch'], 'summary': (reasons[0] if reasons else 'normal watch')}
+
+    reasons = [item['text'] for item in urgent]
+    summary = reasons[0] if reasons else 'normal watch'
+    return {
+        'level': level,
+        'score': score,
+        'color': color,
+        'reasons': reasons or ['normal watch'],
+        'summary': summary,
+        'layers': {
+            'urgent': urgent,
+            'advisory': advisory,
+            'hygiene': hygiene,
+        },
+    }
 
 
 def _update_gps_trail(gps: Dict[str, Any]) -> Dict[str, Any]:
@@ -1145,6 +1759,7 @@ def full_status() -> Dict[str, Any]:
     status['device_memory'] = _device_memory_status(status)
     status['rf_audit'] = rf_audit_status()
     status['known_devices'] = known_devices_status(status)
+    status['household_signals'] = household_signals_status(status)
     status['alert'] = _alert_status(status)
     status['gps_trail'] = _update_gps_trail(status.get('sensors', {}).get('gps', {}))
     status['status_history'] = _update_status_history(status)

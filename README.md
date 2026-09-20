@@ -1,8 +1,8 @@
 # Spac3-Gh0st
 
-Spac3-Gh0st is a windowed Raspberry Pi 5 hacker-companion inspired by Pwnagotchi's face, voice, and plugin/event model.
+Spac3-Gh0st is a windowed Raspberry Pi 5 hacker-companion inspired by Pwnagotchi's face, voice, plugin/event model, and RF capture workflow.
 
-This build is intentionally safe by default: it does passive Wi-Fi/Bluetooth/LAN awareness, Pi service checks, and CrowPi GPS/sensor display. It does not run deauth, credential capture, evil-twin, or cracking automation.
+This build is for CAK3D-owned home/lab networks. It includes passive Wi-Fi/Bluetooth/LAN awareness, Pi service checks, CrowPi GPS/sensor display, and an owned-lab passive WPA capture lifecycle for monitor-capable adapters. It does not include deauth automation, evil-twin flows, credential upload, or cracking automation.
 
 Pwnagotchi source reference cloned at: `/home/pi/src/pwnagotchi`
 
@@ -69,4 +69,4 @@ The actual Pwnagotchi plugins were inspected and summarized here:
 /home/pi/spac3-gh0st/docs/pwnagotchi-plugin-portability.md
 ```
 
-Original Pwnagotchi plugins are discovered but not executed automatically because many assume bettercap, monitor mode, deauth, handshakes, and/or online credential-upload workflows. Spac3-Gh0st uses native safe shims instead.
+Original Pwnagotchi plugins are discovered but not executed automatically because many assume bettercap, monitor mode, deauth, handshakes, and/or online credential-upload workflows. Spac3-Gh0st ports the pieces that fit the Pi cyberdeck and implements its own owned-lab passive capture lifecycle around monitor-mode adapters.

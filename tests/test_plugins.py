@@ -1,14 +1,18 @@
 import unittest
+from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from spac3ghost.config import DEFAULT_CONFIG, save_config
+from spac3ghost.config import DEFAULT_CONFIG, load_config, save_config
 from spac3ghost.plugins import PluginManager
 
 
 class PluginManagerTests(unittest.TestCase):
+    def setUp(self):
+        self._original_config = deepcopy(load_config())
+
     def tearDown(self):
-        save_config(DEFAULT_CONFIG)
+        save_config(self._original_config)
 
     def test_disabled_plugin_is_not_loaded(self):
         with TemporaryDirectory() as d:

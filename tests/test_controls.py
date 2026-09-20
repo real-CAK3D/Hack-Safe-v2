@@ -12,7 +12,7 @@ class ControlsTests(unittest.TestCase):
             status = vpn_status()
         self.assertFalse(status['configured'])
         self.assertFalse(status['proton_installed'])
-        self.assertEqual(status['button_label'], 'Open Proton')
+        self.assertEqual(status['button_label'], 'Open Hack-Safe VPN')
 
     def test_vpn_status_does_not_show_second_open_proton_when_gui_running(self):
         def fake_output(cmd, timeout=4):
@@ -40,6 +40,7 @@ class ControlsTests(unittest.TestCase):
         self.assertIn('feeds', status)
         self.assertTrue(any(feed.get('id') == 'local' for feed in status['feeds']))
         self.assertTrue(any(feed.get('id') == 'bak3ry' for feed in status['feeds']))
+        self.assertTrue(any(feed.get('id') == 'jeffeybot' for feed in status['feeds']))
 
     def test_configured_feeds_support_local_and_bak3ry_toggle(self):
         cfg = {'device': '/dev/video0', 'feeds': [{'id': 'bak3ry', 'label': 'theBAK3RY Cam', 'source': 'url', 'snapshot_url': 'http://thebak3ry:9999/shot.jpg'}]}

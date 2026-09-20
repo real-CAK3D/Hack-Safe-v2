@@ -51,7 +51,7 @@ def configured_feeds(cfg: Dict[str, Any] | None = None) -> List[Dict[str, Any]]:
     if not any(f.get('id') == 'bak3ry' for f in normalized):
         normalized.append({'id': 'bak3ry', 'label': 'theBAK3RY Cam', 'source': 'url', 'snapshot_url': str(cfg.get('bak3ry_snapshot_url') or cfg.get('bak3ry_stream_url') or '').strip()})
     if not any(f.get('id') == 'jeffeybot' for f in normalized):
-        normalized.append({'id': 'jeffeybot', 'label': 'Jeffeybot Car Cam', 'source': 'url', 'snapshot_url': str(cfg.get('jeffeybot_snapshot_url') or 'http://192.168.18.42:5000/video_feed').strip()})
+        normalized.append({'id': 'jeffeybot', 'label': 'Jeffeybot Car Cam', 'source': 'url', 'snapshot_url': str(cfg.get('jeffeybot_snapshot_url') or 'http://192.168.18.42:9000/mjpg').strip()})
     return normalized
 
 
@@ -87,6 +87,31 @@ def vision_history(limit: int = 20) -> Dict[str, Any]:
     rows = _vision_history_rows()[-limit:]
     return {'available': True, 'items': list(reversed(rows)), 'count': len(_vision_history_rows())}
 
+
+
+
+def clear_vision_history() -> Dict[str, Any]:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    removed_files = 0
+    removed_rows = 0
+    try:
+        rows = _vision_history_rows()
+        removed_rows = len(rows) if isinstance(rows, list) else 0
+    except Exception:
+        removed_rows = 0
+    if VISION_HISTORY_FILE.exists():
+        try:
+            VISION_HISTORY_FILE.unlink()
+        except Exception:
+            VISION_HISTORY_FILE.write_text('[]')
+    if SNAP_DIR.exists():
+        for snap in SNAP_DIR.glob('*.jpg'):
+            try:
+                snap.unlink()
+                removed_files += 1
+            except Exception:
+                pass
+    return {'ok': True, 'available': True, 'removed_rows': removed_rows, 'removed_snapshots': removed_files, 'items': [], 'count': 0}
 
 def _save_vision_history(entry: Dict[str, Any], jpeg: bytes | None = None) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -247,14 +272,29 @@ def capture_url_frame(url: str, timeout_s: float = 4.0):
     try:
         req = Request(url, headers={'User-Agent': 'Spac3-Gh0st/0.2'})
         with urlopen(req, timeout=timeout_s) as resp:
-            data = resp.read(2_000_000)
+            ctype = (resp.headers.get('content-type') or '').lower()
+            if 'multipart/x-mixed-replace' in ctype or 'mjpg' in url.lower() or 'mjpeg' in url.lower():
+                data = b''
+                deadline = time.time() + timeout_s
+                while len(data) < 512_000 and time.time() < deadline:
+                    chunk = resp.read(4096)
+                    if not chunk:
+                        break
+                    data += chunk
+                    frame_start = data.find(bytes([0xff, 0xd8]))
+                    frame_end = data.find(bytes([0xff, 0xd9]), frame_start + 2) if frame_start >= 0 else -1
+                    if frame_start >= 0 and frame_end > frame_start:
+                        data = data[frame_start:frame_end + 2]
+                        break
+            else:
+                data = resp.read(2_000_000)
         # Snapshot URLs return a JPEG directly. MJPEG streams return multipart bytes;
         # pull the first JPEG frame out so SunFounder/car camera streams can be used
         # as Vision feeds without a separate proxy.
-        start = data.find(b'\xff\xd8')
-        end = data.find(b'\xff\xd9', start + 2) if start >= 0 else -1
-        if start >= 0 and end > start:
-            data = data[start:end + 2]
+        frame_start = data.find(bytes([0xff, 0xd8]))
+        frame_end = data.find(bytes([0xff, 0xd9]), frame_start + 2) if frame_start >= 0 else -1
+        if frame_start >= 0 and frame_end > frame_start:
+            data = data[frame_start:frame_end + 2]
         arr = np.frombuffer(data, dtype=np.uint8)
         frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
         if frame is None:
@@ -264,7 +304,6 @@ def capture_url_frame(url: str, timeout_s: float = 4.0):
         return None, f'{url} failed: {exc}'
     finally:
         _CAPTURE_LOCK.release()
-
 
 def capture_configured_frame(cfg: Dict[str, Any], feed_id: str | None = None):
     feed = select_feed(cfg, feed_id)
@@ -310,19 +349,20 @@ def _draw_detections(frame, detections: List[Dict[str, Any]]):
 def analyze_current_frame(conf: float = 0.25, imgsz: int = 320, feed_id: str | None = None) -> Dict[str, Any]:
     global _LAST_ANALYSIS
     cfg = load_config().get('vision', {})
+    feed = select_feed(cfg, feed_id)
+    feed_key = str(feed.get('id') or 'local')
     if not cfg.get('enabled'):
         _LAST_ANALYSIS = {'ts': int(time.time()), 'detections': [], 'error': 'Vision is off.'}
-        return {'ok': False, **_LAST_ANALYSIS, **vision_backend_status()}
-    feed = select_feed(cfg, feed_id)
-    frame, error = capture_configured_frame(cfg, str(feed.get('id') or 'local'))
+        return {'ok': False, **vision_backend_status(), 'feed': feed_key, **_LAST_ANALYSIS}
+    frame, error = capture_configured_frame(cfg, feed_key)
     if error:
         _LAST_ANALYSIS = {'ts': int(time.time()), 'detections': [], 'error': error}
-        return {'ok': False, **_LAST_ANALYSIS, **vision_backend_status()}
+        return {'ok': False, **vision_backend_status(), 'feed': feed_key, **_LAST_ANALYSIS}
     assert frame is not None
     model = _load_model()
     if model is None:
         _LAST_ANALYSIS = {'ts': int(time.time()), 'detections': [], 'error': _MODEL_ERROR or 'YOLO model unavailable.'}
-        return {'ok': False, **_LAST_ANALYSIS, **vision_backend_status()}
+        return {'ok': False, **vision_backend_status(), 'feed': feed_key, **_LAST_ANALYSIS}
     started = time.time()
     results = model.predict(frame, imgsz=imgsz, conf=conf, verbose=False, device='cpu')
     detections: List[Dict[str, Any]] = []
@@ -340,9 +380,9 @@ def analyze_current_frame(conf: float = 0.25, imgsz: int = 320, feed_id: str | N
         jpg_quality = _camera_setting(cfg, 'jpeg_quality', DEFAULT_JPEG_QUALITY, 65, 95)
         ok, buf = _cv2().imencode('.jpg', _draw_detections(frame.copy(), detections), [int(_cv2().IMWRITE_JPEG_QUALITY), jpg_quality])
         labels = [d.get('label', 'object') for d in detections]
-        _save_vision_history({'ts': _LAST_ANALYSIS['ts'], 'ok': True, 'labels': labels[:8], 'detections': detections[:8], 'elapsed_s': _LAST_ANALYSIS['elapsed_s']}, buf.tobytes() if ok else None)
+        _save_vision_history({'ts': _LAST_ANALYSIS['ts'], 'ok': True, 'feed': str(feed.get('id') or 'local'), 'labels': labels[:8], 'detections': detections[:8], 'elapsed_s': _LAST_ANALYSIS['elapsed_s']}, buf.tobytes() if ok else None)
     except Exception:
-        _save_vision_history({'ts': _LAST_ANALYSIS['ts'], 'ok': True, 'labels': [d.get('label', 'object') for d in detections[:8]], 'detections': detections[:8], 'elapsed_s': _LAST_ANALYSIS['elapsed_s']})
+        _save_vision_history({'ts': _LAST_ANALYSIS['ts'], 'ok': True, 'feed': str(feed.get('id') or 'local'), 'labels': [d.get('label', 'object') for d in detections[:8]], 'detections': detections[:8], 'elapsed_s': _LAST_ANALYSIS['elapsed_s']})
     return {'ok': True, 'feed': str(feed.get('id') or 'local'), **_LAST_ANALYSIS, **vision_backend_status()}
 
 
@@ -361,7 +401,10 @@ def jpeg_frame(with_detections: bool = True, feed_id: str | None = None) -> Tupl
     else:
         frame, error = capture_configured_frame(cfg, key)
         if error:
-            cached = _LAST_JPEGS.get(key) or _LAST_JPEG
+            # Keep feed truth intact: do not borrow a stale JPEG from another camera.
+            # Remote/cross-feed fallback made Jeffeybot look live when its PiCar-X
+            # endpoint was actually down/refused.
+            cached = _LAST_JPEGS.get(key)
             if cached:
                 return cached, 'image/jpeg'
             frame = _placeholder(f"{feed.get('label', key)}: {error}")

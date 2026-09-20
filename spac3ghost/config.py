@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict
 
-ROOT = Path('/home/pi/spac3-gh0st')
+ROOT = Path(os.environ.get('SPAC3GHOST_ROOT', '/home/pi/spac3-gh0st'))
 DATA_DIR = ROOT / 'data'
 CONFIG_FILE = DATA_DIR / 'config.json'
 
@@ -43,9 +44,28 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         'device': '/dev/video0',
         'ai_backend': 'yolo',
         'analyze_interval_s': 4,
+        # Moderate defaults: clearer than the old 640x360 fallback without trying
+        # to force 30 FPS on a Pi that may already be under memory/load pressure.
+        'width': 1280,
+        'height': 720,
+        'fps': 15,
+        'jpeg_quality': 90,
+        'selected_feed': 'local',
+        'feeds': [
+            {'id': 'local', 'label': 'Hack-Safe Cam', 'source': 'usb', 'device': '/dev/video0'},
+            {'id': 'bak3ry', 'label': 'theBAK3RY Cam', 'source': 'url', 'snapshot_url': 'http://100.65.33.36:8091/snapshot.jpg'},
+            {'id': 'jeffeybot', 'label': 'Jeffeybot Car Cam', 'source': 'url', 'snapshot_url': 'http://192.168.18.42:9000/mjpg'},
+        ],
     },
     'vpn': {
         'profile': '',
+    },
+    'sensors': {
+        'tilt_level_raw': 1,
+    },
+    'ui': {
+        'theme': 'default',
+        'face_pack': 'default',
     },
     'phrases': {'bluetooth_chatter': ['Wi-Fi, Bluetooth, and plugin telemetry are all awake: {bt_count} blue / {plugin_count} '
                            'plugins.',
@@ -463,6 +483,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         'command_center': True,
         'camera_watch': True,
         'wifi_audit': True,
+        # Pwnagotchi-style deck options are visible/enabled by default, but the
+        # underlying collectors still report truthful adapter/tool readiness and
+        # keep passive owned-lab gates in place.
+        'pwnagotchi_deck': True,
+        'pwnagotchi_capture': True,
+        'adapter_status': True,
     },
     'hotspot': {
         'desired_ssid': 'Wu-Tang LAN',
@@ -498,6 +524,14 @@ def _normalize(config: Dict[str, Any]) -> Dict[str, Any]:
     vision = config.setdefault('vision', {})
     vision.setdefault('device', DEFAULT_CONFIG['vision']['device'])
     vision.setdefault('analyze_interval_s', DEFAULT_CONFIG['vision']['analyze_interval_s'])
+    for key in ('width', 'height', 'fps', 'jpeg_quality', 'selected_feed'):
+        vision.setdefault(key, DEFAULT_CONFIG['vision'][key])
+    configured_ids = {str(f.get('id')) for f in vision.get('feeds', []) if isinstance(f, dict)} if isinstance(vision.get('feeds'), list) else set()
+    if not isinstance(vision.get('feeds'), list):
+        vision['feeds'] = []
+    for feed in DEFAULT_CONFIG['vision']['feeds']:
+        if str(feed.get('id')) not in configured_ids:
+            vision['feeds'].append(deepcopy(feed))
     if vision.get('ai_backend') in ('', 'not_configured') and Path('/home/pi/yolov8n.pt').exists():
         vision['ai_backend'] = 'yolo'
     return config

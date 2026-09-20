@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Hack-Safe Spac3-Gh0st</title>
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/style.css?v=20260912-layered-alerts">
 </head>
 <body>
   <div class="shell">
@@ -15,9 +15,10 @@
 
     <nav class="tabs" aria-label="Spac3-Gh0st pages">
       <button class="tab-button active" data-tab="dash" onclick="showTab('dash')">Dashboard</button>
-      <button class="tab-button" data-tab="vision" onclick="showTab('vision')">Vision</button>
+      <button class="tab-button" data-tab="systems" onclick="showTab('systems')">Systems</button>
+      <button class="tab-button" data-tab="signals" onclick="showTab('signals')">Signals</button>
+      <button class="tab-button" data-tab="lab" onclick="showTab('lab')">Lab</button>
       <button class="tab-button" data-tab="externals" onclick="showTab('externals')">Externals</button>
-      <button class="tab-button" data-tab="plugins" onclick="showTab('plugins')">Plugins</button>
       <button class="tab-button" data-tab="settings" onclick="showTab('settings')">Settings</button>
     </nav>
 
@@ -30,42 +31,93 @@
           <div id="tailUrl" class="mini" aria-hidden="true"></div>
         </section>
 
-        <section class="card controls-card">
-          <h2>Controls</h2>
-          <div class="controls-grid">
-            <button id="vpnButton" onclick="toggleVpn()">VPN</button>
-            <button id="vncButton" onclick="toggleService('vnc')">RealVNC</button>
-            <button id="syncthingButton" onclick="toggleService('syncthing')">Syncthing</button>
-            <button id="visionButton" onclick="toggleVision()">Vision</button>
-            <button onclick="scan('wifi')">Wi-Fi</button>
-            <button id="wifiVaultButton" onclick="loadWifiVault()">Wi-Fi Vault</button>
-            <button onclick="scan('bluetooth')">BT</button>
-            <button onclick="scan('lan')">LAN</button>
-            <button onclick="fetch('/api/sensors/refresh').then(refresh)">Sensors</button>
-            <button id="reconButton" onclick="aggressiveRecon()">Aggro Recon</button>
-            <button id="stealthButton" onclick="toggleStealth()">Stealth UI</button>
-            <button id="protonFxButton" onclick="toggleProtonFx()">Proton FX</button>
-            <button id="soundButton" onclick="toggleSound()">Sound Off</button>
-            <button onclick="refresh()">Refresh</button>
-          </div>
-          <div id="quickCameraSwitch" class="quick-camera-switch"></div>        </section>
 
-        <section class="card mission-card"><h2>Mission Control</h2><div id="missionViz" class="viz-stack"></div></section>
-        <section class="card stat-card weather-sim-card"><h2>Weather Sim</h2><div id="weatherSimViz" class="weather-sim"></div></section>
+        <section class="card mission-card"><h2>Mission Control</h2><div class="local-controls mission-controls"><button id="vpnButton" onclick="toggleVpn()">VPN</button><button id="protonFxButton" onclick="toggleProtonFx()">Hack-Safe VPN FX</button><button id="soundButton" onclick="toggleSound()">Sound Off</button><button onclick="refresh()">Refresh</button></div><div id="missionViz" class="viz-stack"></div></section>
+        <section class="card stat-card cyber-kit-card"><h2>Pwnagotchi-on-Steroids Kit</h2><p class="mini">Home cyber test kit controls: scans, hardware reads, and gated owned-lab workflows.</p><div id="cyberKitViz" class="cyber-kit-grid">Loading cyber kit...</div></section>
+        <section class="card stat-card ai-chat-card"><h2>Ask Spac3-Gh0st AI</h2><p class="mini">Local Ollama text chat. Whisper speech-to-text and TTS stay storage-aware until installed.</p><div id="aiChatViz" class="ai-chat-viz">Checking local AI...</div></section>
+        <section class="card stat-card open-tools-card"><h2>Open Tools</h2><p class="mini">Quick launch spots for the local UIs you keep asking for.</p><div id="openToolsViz" class="open-tools-grid">Loading launch links...</div></section>
+        <section class="card events dashboard-events"><h2>Activity Feed</h2><div id="events"></div></section>
+      </section>
+
+      <section id="tab-systems" class="tab-panel page systems-page dashboard-page">
+        <section class="card page-hero"><h2>Systems</h2><p class="mini">Core Pi health, live system monitor, service controls, storage, load, and process telemetry.</p></section>
         <section class="card stat-card"><h2>System</h2><div id="systemViz" class="viz-stack"></div><pre id="system"></pre></section>
-        <section class="card stat-card hacker-card"><h2>Hacker Deck</h2><div id="hackerViz" class="viz-stack"></div></section>
-        <section class="card stat-card"><h2>Known Devices</h2><div id="knownDevicesViz" class="viz-stack"></div></section>
-        <section class="card stat-card"><h2>Wi-Fi</h2><div id="wifiViz" class="viz-stack"></div><pre id="wifi"></pre></section>
-        <section class="card stat-card wifi-vault-card"><h2>Known Networks</h2><div id="wifiVaultViz" class="viz-stack"><div class="scanline-note">Hit Wi-Fi Vault to load saved profiles. Passwords stay masked in Hack-Safe.</div></div></section>
+        <section class="card stat-card system-monitor-card"><h2>System Monitor</h2><div id="systemMonitorViz" class="system-monitor-viz">Loading live readouts...</div></section>
+        <section class="card stat-card"><h2>Services</h2><div class="local-controls"><button id="vncButton" onclick="toggleService('vnc')">VNC</button><button id="syncthingButton" onclick="toggleService('syncthing')">Syncthing</button></div><div id="servicesViz" class="viz-stack"></div><pre id="services"></pre></section>
+
+      </section>
+
+      <section id="tab-signals" class="tab-panel page signals-page dashboard-page">
+        <section class="card page-hero"><h2>Signals</h2><p class="mini">Wi-Fi, Bluetooth/LAN, GPS/sensors, RF audit, map, and defensive situational awareness — separate from core Systems and Lab tools.</p></section>
+        <section class="card stat-card hacker-card"><h2>Hacker Deck</h2><div class="local-controls"><button onclick="scan('lan')">LAN Scan</button><button onclick="scan('bluetooth')">BT Scan</button><button id="reconButton" onclick="aggressiveRecon()">Aggro Recon</button><button id="stealthButton" onclick="toggleStealth()">Stealth UI</button></div><div id="hackerViz" class="viz-stack"></div></section>
+        <section class="card stat-card weather-sim-card"><h2>Weather Ops</h2><div id="weatherSimViz" class="weather-sim">Loading weather operations...</div></section>
+        <section class="card stat-card known-devices-card"><h2>Known Devices</h2><div id="knownDevicesViz" class="viz-stack"></div></section>
+        <section class="card stat-card household-signals-card"><h2>Household Signals</h2><p class="mini">Correlates LAN, Wi‑Fi, Bluetooth, Pis, cameras, and Home Assistant labels so strangers stand out.</p><div id="householdSignalsViz" class="household-signals-viz">Mapping household signals...</div></section>
+        <section class="card stat-card wifi-card"><h2>Wi-Fi</h2><div class="local-controls"><button onclick="scan('wifi')">Wi-Fi Scan</button><button id="wifiVaultButton" onclick="loadWifiVault()">Wi-Fi Vault</button></div><div id="wifiViz" class="viz-stack"></div><pre id="wifi"></pre></section>
+        <section class="card stat-card wifi-vault-card"><h2>Known Networks</h2><div id="wifiVaultViz" class="viz-stack"><div class="scanline-note">Hit Wi-Fi Vault to load saved profiles. Passwords stay hidden until you flip the reveal switch.</div></div></section>
         <section class="card stat-card rf-card"><h2>RF Audit</h2><div id="rfAuditViz" class="viz-stack"></div></section>
         <section class="card stat-card global-map-card"><h2>Global Map</h2><div id="globalMapViz" class="global-map-viz"></div></section>
         <section class="card stat-card defense-card"><h2>Defensive Ops</h2><div id="defenseOpsViz" class="viz-stack"></div></section>
-        <section class="card stat-card sensor-card"><h2>GPS + Sensors</h2><div id="sensorViz" class="viz-stack"></div><pre id="sensors"></pre></section>
-        <section class="card stat-card"><h2>Services</h2><div id="servicesViz" class="viz-stack"></div><pre id="services"></pre></section>
-        <section class="card events"><h2>Activity Feed</h2><div id="events"></div></section>
+        <section class="card stat-card sensor-card"><h2>GPS + Sensors</h2><div class="local-controls"><button onclick="fetch('/api/sensors/refresh').then(refresh)">Refresh Sensors</button><button onclick="calibrateTiltLevel()">Set Current Tilt as Level</button></div><div id="sensorViz" class="viz-stack"></div><pre id="sensors"></pre></section>
       </section>
 
-      <section id="tab-vision" class="tab-panel page vision-layout">
+      <section id="tab-lab" class="tab-panel page lab-layout">
+        <section class="card lab-hero-card">
+          <h2>Lab Operations</h2>
+          <p class="mini">Spicy tools, toys, RF workflow readiness, safety boundaries, and hardware staging live here. Camera feed stays in Externals only.</p>
+          <div id="labSectionTabs" class="subtab-row" role="tablist" aria-label="Lab sections">
+            <button class="subtab active" data-lab-section="quick" onclick="showLabSection('quick')">Quick Start</button>
+            <button class="subtab" data-lab-section="software" onclick="showLabSection('software')">Software</button>
+            <button class="subtab" data-lab-section="rf" onclick="showLabSection('rf')">RF / Workflows</button>
+            <button class="subtab" data-lab-section="hardware" onclick="showLabSection('hardware')">Hardware</button>
+            <button class="subtab" data-lab-section="safety" onclick="showLabSection('safety')">Safety</button>
+          </div>
+        </section>
+        <section class="card lab-guide-card lab-section lab-section-quick">
+          <h2>Lab Quick Start</h2>
+          <div id="labGuideViz" class="lab-guide-viz">Loading next actions...</div>
+        </section>
+        <section class="card lab-status-card lab-software-card lab-section lab-section-software">
+          <h2>Lab Software Launch Bay</h2>
+          <p class="mini">Real install/readiness checks for Bjorn, Project N.O.M.A.D, and other lab tools. Toggles stage safe use; active runs need owned-lab scope.</p>
+          <div id="labSoftwareViz" class="lab-software-grid">Checking lab software...</div>
+        </section>
+        <section class="card spicy-card lab-spicy-card lab-section lab-section-software">
+          <h2>Spicy Tools Control Center</h2>
+          <p class="mini">Safe wrappers only. Enable/stage installed safe services; risky RF/capture/cracking/MITM/HID actions stay gated.</p>
+          <div id="spicyToolsViz" class="spicy-tools-grid">Loading spicy tools...</div>
+        </section>
+        <section class="card lab-status-card lab-workflows-card lab-section lab-section-rf">
+          <h2>Pwnagotchi / Hashcat Workflows</h2>
+          <div id="labWorkflowViz" class="lab-viz">Checking handshake and WPA/WPA2 workflow readiness...</div>
+        </section>
+        <section class="card lab-status-card companion-firmware-card lab-section lab-section-hardware">
+          <h2>Companion Firmware / Wireless Wizard</h2>
+          <p class="mini">Pi-native pieces go in as wrappers/checks. ESP32 firmware stays as companion-device staging, notes, and flasher links — no fake Pi install button.</p>
+          <div id="companionFirmwareViz" class="companion-firmware-grid">Loading companion firmware notes...</div>
+        </section>
+        <section class="card lab-status-card hardware-docks-card lab-section lab-section-hardware">
+          <h2>Hardware Docks</h2>
+          <p class="mini">Readable plug-in docks for Pwnagotchi Zero, Bruce/CYD, ESP32-S3/dev boards, IR, NFC/RFID, and SDR receivers.</p>
+          <div id="hardwareDocksViz" class="companion-firmware-grid">Detecting plugged hardware...</div>
+        </section>
+        <section class="card lab-status-card safety-boundary-card lab-section lab-section-safety">
+          <h2>Safety Boundaries</h2>
+          <p class="mini">Disabled by default. Enable/disable here means readiness/staging only, with used-by and needed-service details.</p>
+          <div id="safetyBoundaryViz" class="safety-boundary-grid">Loading boundaries...</div>
+        </section>
+        <section class="card lab-status-card lab-section lab-section-hardware">
+          <h2>Pi5 Optical Audio</h2>
+          <div id="opticalAudioViz" class="lab-viz">Checking GPIO12 / RP1 PIO / ALSA...</div>
+        </section>
+        <section class="card lab-status-card lab-section lab-section-rf">
+          <h2>PiAware / ADS-B</h2>
+          <div id="adsbViz" class="lab-viz">Checking aircraft receiver stack...</div>
+        </section>
+      </section>
+
+      <section id="tab-externals" class="tab-panel page externals-page vision-layout">
+        <section class="card page-hero"><h2>Externals</h2><p class="mini">Vision, camera feeds, God's Eye, and external Pi/car nodes live together here.</p></section>
         <section class="card vision-card">
           <h2>Camera Feed</h2>
           <div class="camera-frame-wrap">
@@ -76,15 +128,35 @@
             <button id="visionButton2" onclick="toggleVision()">Vision</button>
             <button id="analyzeButton" onclick="analyzeVision()">Run YOLO Scan</button>
             <button onclick="refreshCameraFrame(true)">Refresh Frame</button>
+            <button onclick="clearVisionHistory()">Clear History</button>
           </div>
           <div id="cameraFeedButtons" class="vision-feed-buttons"></div>
         </section>
         <section class="card"><h2>Vision Status</h2><pre id="visionStatus">Vision checking...</pre></section>
         <section class="card"><h2>YOLO Detections</h2><pre id="visionDetections">No scan yet.</pre></section>
         <section class="card vision-history-card"><h2>Vision History</h2><div id="visionHistoryViz" class="viz-stack">No scans yet.</div></section>
-      </section>
-
-      <section id="tab-externals" class="tab-panel page externals-page">
+        <section class="card godseye-hero-card vision-godseye-card">
+          <div class="godseye-orbit" aria-hidden="true"><i></i><i></i><i></i></div>
+          <p class="mini">SEPARATE VISION MODULE // LOCAL OSINT GLOBE // PUBLIC SIGNALS</p>
+          <h2>God's Eye View</h2>
+          <p>God’s Eye lives on the Externals page now, but stays boxed off from the camera/YOLO feed: separate launch bay, separate boundaries, same situational-awareness family.</p>
+          <div class="godseye-actions">
+            <button onclick="openGodsEye()">Open Live Globe</button>
+            <button onclick="openGodsEyeStatic()">Static Fallback</button>
+            <a class="button-link" href="https://github.com/bilawalsidhu/gods-eye-view" target="_blank" rel="noopener noreferrer">Source Repo</a>
+            <a class="button-link" href="https://maptheworld.ai/" target="_blank" rel="noopener noreferrer">Project Home</a>
+          </div>
+          <pre id="godseyeStatus">God's Eye View live mode is proxied through /godseye-live/. Static fallback remains at /godseye-app/index.html.</pre>
+        </section>
+        <section class="card godseye-readiness-card vision-godseye-boundary">
+          <h2>God’s Eye Boundary</h2>
+          <div class="godseye-grid">
+            <div><b>Camera vs globe</b><span>Camera selection, frame refresh, and YOLO stay above. God’s Eye uses its own live/static launch routes.</span></div>
+            <div><b>Network</b><span>Live globe is proxied through /godseye-live/; static fallback is /godseye-app/index.html.</span></div>
+            <div><b>Secrets</b><span>Google Maps browser key is client-exposed by design; restrict it in Google Cloud and keep account secrets out of files/logs.</span></div>
+            <div><b>Tor/VPN</b><span>Tor Browser launch stays on hold so VPN and Tailscale recovery stay clean.</span></div>
+          </div>
+        </section>
         <section class="card externals-nav-card">
           <h2>Externals</h2>
           <div id="externalDeviceTabs" class="external-device-tabs">Loading external nodes...</div>
@@ -95,27 +167,44 @@
         </section>
       </section>
 
-      <section id="tab-plugins" class="tab-panel page plugins-page">
-        <section class="card">
+      <section id="tab-settings" class="tab-panel page settings-layout">
+        <section class="card settings-plugin-switchboard">
           <h2>Plugin Switchboard</h2>
           <p class="mini">Enable/disable plugins. Changes save to config and reload the plugins.</p>
           <div id="pluginSwitches" class="plugin-switches">Loading plugins...</div>
         </section>
-        <section class="card plugins-card">
+        <section class="card plugins-card settings-plugins-card">
           <h2>Plugin Panels</h2>
           <div id="pluginPanels" class="plugin-grid"></div>
         </section>
-      </section>
-
-      <section id="tab-settings" class="tab-panel page settings-layout">
         <section class="card">
           <h2>Settings</h2>
-          <p class="mini">Edit config JSON directly. Save reloads plugins and phrases.</p>
+          <p class="mini">Choose a theme, or edit config JSON directly. Save reloads plugins and phrases.</p>
+          <div class="theme-picker">
+            <label>Color theme <select id="themeSelect" onchange="setTheme(this.value)">
+              <option value="default">Default</option>
+              <option value="purple">Purple</option>
+              <option value="orange">Orange</option>
+              <option value="red">Red</option>
+              <option value="blue">Blue</option>
+              <option value="yellow">Yellow</option>
+            </select></label>
+          </div>
           <div class="settings-actions">
             <button onclick="loadSettings()">Reload Settings</button>
             <button onclick="saveSettings()">Save Settings</button>
           </div>
           <pre id="settingsStatus">Settings not loaded yet.</pre>
+          <section class="face-mood-settings" aria-label="Faces and moods settings">
+            <div class="face-mood-head">
+              <div>
+                <h3>Faces + Moods</h3>
+                <p class="mini">Settings-owned face packs and mood thresholds. Edits update the JSON below; Save Settings writes them.</p>
+              </div>
+              <button onclick="addMissingFacesToSettings()">Add Missing Built-in Faces</button>
+            </div>
+            <div id="faceMoodSettings" class="face-mood-grid">Load Settings to edit faces and moods.</div>
+          </section>
           <textarea id="settingsJson" spellcheck="false"></textarea>
         </section>
         <section class="card">
@@ -129,9 +218,9 @@ Plugin switches write to config.plugins and reload the dashboard backend.</pre>
     </main>
 
     <div class="ticker ticker-bottom" aria-label="system stats footer ticker">
-      <div id="topTickerText" class="ticker-track">BOOTING CPU // RAM // DISK // WIFI // GPS //</div>
+      <div id="bottomTickerText" class="ticker-track">BOOTING CPU // RAM // DISK // WIFI // GPS //</div>
     </div>
   </div>
-  <script src="/app.js"></script>
+  <script src="/app.js?v=20260912-layered-alerts"></script>
 </body>
 </html>
