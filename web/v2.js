@@ -243,6 +243,7 @@
       { g: '⌄', grp: 'View', name: 'Expand all cards', run: function () { foldAll(false); } },
       { g: '?', grp: 'Help', name: 'Keyboard shortcuts', hint: '?', run: showHelp }
     );
+    (window.v2ExtraCommands || []).forEach(function (fn) { try { fn().forEach(function (c) { list.push(c); }); } catch (e) { /* optional */ } });
     THEMES.forEach(function (t) { list.push({ g: '●', grp: 'Themes', name: 'Theme: ' + t, run: function () { setTheme(t); toast('Theme', t, 'info', 1500); } }); });
     $$('.tab-panel').forEach(function (p) {
       $$('.card > h2', p).forEach(function (h) {

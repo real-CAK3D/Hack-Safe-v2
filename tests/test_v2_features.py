@@ -45,6 +45,39 @@ class HealthEndpointTests(unittest.TestCase):
         self.assertEqual(set(payload['plugins']), {'loaded', 'enabled', 'total'})
 
 
+class ProtonMapTests(unittest.TestCase):
+    """Guards the marker anchors that keep pins on land."""
+
+    def _app_js(self):
+        from spac3ghost.paths import WEB_DIR
+        return (WEB_DIR / 'app.js').read_text(encoding='utf-8')
+
+    def test_every_marker_has_an_anchor_inside_the_map(self):
+        import re
+        js = self._app_js()
+        block = js[js.index('const MAP_ANCHORS={'):js.index('function mapAnchorPercent')]
+        anchors = {m.group(1): (int(m.group(2)), int(m.group(3))) for m in re.finditer(r"'([A-Z-]+)':\[(\d+),(\d+)\]", block)}
+        markers = set(re.findall(r"\{name:'([A-Z-]+)',x:", js))
+        self.assertGreaterEqual(len(markers), 20)
+        self.assertEqual(markers - set(anchors), set(), 'markers without a verified anchor')
+        for name, (x, y) in anchors.items():
+            self.assertTrue(0 < x < 1538.434 and 0 < y < 700, f'{name} anchor is outside the SVG')
+
+    def test_anchors_are_normalised_against_the_svg_size(self):
+        js = self._app_js()
+        self.assertIn('PROTON_MAP_W=1538.434', js)
+        self.assertIn('proton-map-canvas', js)
+
+
+class WeatherFxTests(unittest.TestCase):
+    def test_engine_ships_and_is_loaded(self):
+        from spac3ghost.paths import WEB_DIR
+        js = (WEB_DIR / 'weatherfx.js').read_text(encoding='utf-8')
+        for word in ('drawRain', 'drawSnow', 'drawLightning', 'moonPhase', 'drawFog'):
+            self.assertIn(word, js)
+        self.assertIn('/weatherfx.js', (WEB_DIR / 'index.html').read_text(encoding='utf-8'))
+
+
 class FrontendAssetTests(unittest.TestCase):
     def test_v2_assets_are_wired_into_index(self):
         from spac3ghost.paths import WEB_DIR

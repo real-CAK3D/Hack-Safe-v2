@@ -276,3 +276,71 @@ body.v2-compact .v2-tile .val { font-size: 19px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+
+/* ==========================================================================
+   Proton world map: aspect-locked canvas so pin % positions map 1:1 onto the
+   SVG artwork (pins used to be positioned against a differently-shaped box,
+   which pushed them into the ocean whenever the panel was resized).
+   ========================================================================== */
+.proton-map-viewport { container-type: size; }
+.proton-map-canvas {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 96%; aspect-ratio: 1538.434 / 700;
+}
+@supports (width: 1cqw) {
+  .proton-map-canvas { width: min(96cqw, calc(92cqh * 2.19776)); }
+}
+.proton-map-viewport .proton-map-canvas > img {
+  position: absolute; inset: 0; left: 0; top: 0; width: 100%; height: 100%; object-fit: fill;
+  opacity: .95; filter: brightness(1.12) saturate(1.1) contrast(1.1);
+}
+
+/* pins: a dot centred exactly on the anchor, with a pulse ring and hover label */
+.proton-map-canvas .proton-pin {
+  --pin: clamp(9px, 1.15cqw, 15px);
+  width: var(--pin); height: var(--pin); transform: translate(-50%, -50%);
+  border-radius: 50%; padding: 0; z-index: 6;
+}
+.proton-map-canvas .proton-pin span {
+  left: 50%; top: 50%; width: 100%; height: 100%; border-radius: 50%; transform: translate(-50%, -50%) !important;
+  animation: none !important; opacity: 1;
+  background: radial-gradient(circle at 35% 30%, #c6b8ff, #7c5cff 65%); border: 1.5px solid #ffffffcc;
+  box-shadow: 0 0 0 1px #000a, 0 2px 8px #000c, 0 0 10px #7c5cff99;
+}
+.proton-map-canvas .proton-pin span:after { display: none; }
+.proton-map-canvas .proton-pin::before {
+  content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 1.5px solid #9b87ff;
+  opacity: 0; animation: v2-pin-ring 3.2s ease-out infinite; pointer-events: none;
+}
+.proton-map-canvas .proton-pin:nth-of-type(3n)::before { animation-delay: 1.05s; }
+.proton-map-canvas .proton-pin:nth-of-type(4n)::before { animation-delay: 2.1s; }
+.proton-map-canvas .proton-pin::after {
+  content: attr(data-label); position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translate(-50%, 4px);
+  padding: 3px 7px; border-radius: 6px; background: #0d0b16f0; border: 1px solid #6d4aff88; color: #fff;
+  font: 700 10px/1 var(--v2-ui, system-ui); letter-spacing: .6px; white-space: nowrap; opacity: 0; pointer-events: none;
+  transition: opacity .15s, transform .15s;
+}
+.proton-map-canvas .proton-pin:hover, .proton-map-canvas .proton-pin.selected, .proton-map-canvas .proton-pin.connected { z-index: 9; }
+.proton-map-canvas .proton-pin:hover::after, .proton-map-canvas .proton-pin.selected::after, .proton-map-canvas .proton-pin.connected::after { opacity: 1; transform: translate(-50%, 0); }
+.proton-map-canvas .proton-pin.selected span { background: radial-gradient(circle at 35% 30%, #fff, #9b87ff 60%); box-shadow: 0 0 0 1px #000a, 0 0 14px #9b87ff; }
+.proton-map-canvas .proton-pin.connected span { background: radial-gradient(circle at 35% 30%, #d6ffef, #35d098 62%); border-color: #fff; box-shadow: 0 0 0 1px #000a, 0 0 16px #35d098; }
+.proton-map-canvas .proton-pin.connected::before { border-color: #35d098; animation-duration: 2s; }
+.proton-map-canvas .proton-pin.connected::after { border-color: #35d098aa; }
+@keyframes v2-pin-ring { 0% { transform: scale(.5); opacity: .85; } 70%, 100% { transform: scale(1.7); opacity: 0; } }
+.proton-fx-off .proton-map-canvas .proton-pin::before { animation: none !important; opacity: 0; }
+
+/* ==========================================================================
+   Weather: canvas engine (weatherfx.js) replaces the CSS-only sprites
+   ========================================================================== */
+.weather-sky { isolation: isolate; }
+.weather-sky.wx-on:before { display: none; }
+.weather-sky.wx-on > .weather-stars, .weather-sky.wx-on > .weather-sun, .weather-sky.wx-on > .weather-moon,
+.weather-sky.wx-on > .weather-cloud, .weather-sky.wx-on > .weather-rain, .weather-sky.wx-on > .weather-lightning,
+.weather-sky.wx-on > .weather-ground { display: none !important; }
+.weather-sky .wx-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: 1; }
+.weather-sky .wx-tag {
+  position: absolute; left: 8px; bottom: 6px; z-index: 2; padding: 2px 8px; border-radius: 999px;
+  background: #00000066; border: 1px solid #ffffff22; color: #ffffffd9; backdrop-filter: blur(4px);
+  font: 700 9.5px/1.4 var(--v2-ui, system-ui); letter-spacing: 1.2px; text-transform: uppercase; pointer-events: none;
+}

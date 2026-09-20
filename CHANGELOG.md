@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.1.0
+
+### Weather Ops: new canvas weather engine (`web/weatherfx.js`)
+- Replaces the CSS-only sky with a layered simulation driven by the live weather data (summary, wind, sunrise/sunset).
+- Sky colour follows sun altitude (night, twilight, golden hour, day) and darkens with overcast/storms.
+- Cumulus-style clouds with parallax drift that speeds up with wind; real moon phase, twinkling stars, shooting stars.
+- Depth-sorted rain slanted by gusting wind with ground splashes/ripples and wet-ground sheen; swaying snow with accumulation; drifting fog; forked lightning with sky flash.
+- Hills and swaying pines, smooth transitions when conditions change, pauses when hidden, respects reduced-motion.
+- Command palette (`Ctrl/Cmd+K`) has "Weather FX: ..." presets (clear, rain, thunderstorm, snow, blizzard, fog, night, golden hour) to preview any condition.
+
+### Proton map
+- Pins used to be placed by hand-tuned percentages of a box that did not match the map artwork, so they drifted into the ocean. They now sit on an aspect-locked canvas and use anchors measured from the SVG itself (each verified inside its country's land shape), so they stay on the right country at any panel size or zoom.
+- New pin style (centred dot, pulse ring, hover label). Fixed loose profile matching that highlighted the wrong pins (for example "Fastest country" lit ES and TR).
+
 ## 2.0.0
 
 ### New UI (web/v2.css, web/v2.js: additive, loaded after the original UI)
