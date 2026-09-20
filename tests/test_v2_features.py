@@ -45,6 +45,44 @@ class HealthEndpointTests(unittest.TestCase):
         self.assertEqual(set(payload['plugins']), {'loaded', 'enabled', 'total'})
 
 
+class RequestGuardTests(unittest.TestCase):
+    def test_same_origin_and_plain_requests_are_allowed(self):
+        from spac3ghost.app import check_request
+        self.assertIsNone(check_request({'Host': '127.0.0.1:8765'}, 'POST'))
+        self.assertIsNone(check_request({'Host': '127.0.0.1:8765', 'Origin': 'http://127.0.0.1:8765'}, 'POST'))
+        self.assertIsNone(check_request({'Host': 'hack-safe.tail1234.ts.net:8765'}, 'GET'))
+        self.assertIsNone(check_request({'Host': '100.64.0.5:8765'}, 'GET'))
+
+    def test_cross_site_and_rebinding_are_refused(self):
+        from spac3ghost.app import check_request
+        self.assertTrue(check_request({'Host': '127.0.0.1:8765', 'Origin': 'http://evil.example'}, 'POST'))
+        self.assertTrue(check_request({'Host': '127.0.0.1:8765', 'Origin': 'null'}, 'POST'))
+        self.assertTrue(check_request({'Host': '127.0.0.1:8765', 'Sec-Fetch-Site': 'cross-site'}, 'GET'))
+        self.assertTrue(check_request({'Host': 'attacker.example.com:8765'}, 'GET'))
+        self.assertTrue(check_request({}, 'GET'))
+
+
+class ControlsRobustnessTests(unittest.TestCase):
+    def test_run_reports_missing_tools_instead_of_raising(self):
+        from spac3ghost.controls import _run
+        cp = _run(['definitely-not-a-real-binary-xyz'])
+        self.assertEqual(cp.returncode, 127)
+
+    def test_action_endpoints_survive_unknown_ids(self):
+        from spac3ghost.controls import lab_software_action, spicy_tool_action
+        self.assertFalse(spicy_tool_action('nope', 'bogus')['ok'])
+        self.assertFalse(lab_software_action('nope', 'bogus')['ok'])
+
+    def test_service_watchdog_ignores_cache_flag(self):
+        import importlib.util
+        from spac3ghost.paths import PLUGIN_DIR
+        spec = importlib.util.spec_from_file_location('wd', PLUGIN_DIR / 'service_watchdog.py')
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        out = mod.Plugin().on_status({'services': {'ssh': {'active': True}, 'gpsd': {'active': False}, 'cached': True}})
+        self.assertEqual(out['lines'], ['DOWN: gpsd'])
+
+
 class ProtonMapTests(unittest.TestCase):
     """Guards the marker anchors that keep pins on land."""
 

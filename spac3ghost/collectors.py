@@ -36,6 +36,8 @@ _MEM_CACHE: Dict[str, Dict[str, Any]] = {}
 def run(cmd: list[str], timeout: int = 8) -> str:
     try:
         return subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=timeout, check=False).stdout
+    except FileNotFoundError:
+        return ''  # tool not installed on this host (e.g. nmcli on Windows): treat as "no data"
     except Exception as exc:
         return f'ERROR: {exc}'
 
@@ -92,6 +94,8 @@ def wifi_status(rescan: bool = False) -> Dict[str, Any]:
         mode = 'yes' if rescan else 'no'
         text = run(['nmcli', '-t', '-f', 'ACTIVE,SSID,CHAN,SIGNAL,SECURITY', 'dev', 'wifi', 'list', '--rescan', mode], timeout=12 if rescan else 4)
         networks = parse_nmcli_wifi(text)
+        if not networks and hostinfo.IS_WINDOWS:
+            networks = hostinfo.windows_wifi() or []
         current = next((n for n in networks if n['connected']), None)
         return {'available': True, 'connected': bool(current), 'current': current, 'networks': networks[:40], 'rescan': rescan}
     return cached('wifi_rescan' if rescan else 'wifi_fast', 12 if rescan else 3, collect)
@@ -108,6 +112,10 @@ def parse_bluetooth_devices(text: str) -> List[Dict[str, str]]:
 
 def bluetooth_status(scan: bool = False) -> Dict[str, Any]:
     def collect():
+        if hostinfo.IS_WINDOWS:
+            win = hostinfo.windows_bluetooth()
+            if win is not None:
+                return {'available': True, 'powered': win['powered'], 'devices': win['devices'][:80], 'scan': scan}
         powered = 'Powered: yes' in run(['bluetoothctl', 'show'], timeout=3)
         if scan:
             # Short active scan; non-blocking enough for a button, not for every refresh.
@@ -115,18 +123,41 @@ def bluetooth_status(scan: bool = False) -> Dict[str, Any]:
             run(['bluetoothctl', 'scan', 'off'], timeout=3)
         devices = parse_bluetooth_devices(run(['bluetoothctl', 'devices'], timeout=4))
         return {'available': True, 'powered': powered, 'devices': devices[:80], 'scan': scan}
-    return cached('bt_scan' if scan else 'bt_fast', 10 if scan else 4, collect)
+    return cached('bt_scan' if scan else 'bt_fast', 30 if hostinfo.IS_WINDOWS else (10 if scan else 4), collect)
+
+
+_OUI = {
+    '2C:CF:67': 'Raspberry Pi', 'B8:27:EB': 'Raspberry Pi', 'DC:A6:32': 'Raspberry Pi', 'E4:5F:01': 'Raspberry Pi', 'D8:3A:DD': 'Raspberry Pi',
+    'F4:F5:D8': 'Google/Nest', '3C:5C:C4': 'Amazon', 'F0:18:98': 'Apple', 'A4:83:E7': 'Apple', '3C:22:FB': 'Apple', 'F4:5C:89': 'Apple',
+    '00:1A:11': 'Google', '54:60:09': 'Google', 'F8:0F:F9': 'Google', '44:65:0D': 'Amazon', 'FC:65:DE': 'Amazon', '74:C2:46': 'Amazon',
+    '00:17:88': 'Philips Hue', 'B0:BE:76': 'TP-Link', '50:C7:BF': 'TP-Link', 'F4:F2:6D': 'TP-Link', '34:98:B5': 'Netgear', 'A0:04:60': 'Netgear',
+    '9C:3D:CF': 'Netgear', 'DC:A9:04': 'Apple', '18:B4:30': 'Nest', '00:1D:C9': 'GainSpan', 'AC:84:C6': 'TP-Link', '24:0A:C4': 'Espressif',
+    '30:AE:A4': 'Espressif', 'A4:CF:12': 'Espressif', '84:0D:8E': 'Espressif', 'EC:FA:BC': 'Espressif', '00:0C:29': 'VMware', '08:00:27': 'VirtualBox',
+    '00:15:5D': 'Hyper-V', '52:54:00': 'QEMU/KVM', 'B8:AC:6F': 'Dell', '00:14:22': 'Dell', '3C:97:0E': 'Intel', '8C:8D:28': 'Intel', 'D4:6E:0E': 'TP-Link',
+    '00:50:56': 'VMware', '78:11:DC': 'Xiaomi', '64:09:80': 'Xiaomi', '38:F9:D3': 'Apple', 'BC:D0:74': 'Apple', '00:E0:4C': 'Realtek', 'E8:4E:06': 'Roku',
+    'B0:A7:37': 'Roku', 'CC:6D:A0': 'Roku', '5C:AA:FD': 'Sonos', '94:9F:3E': 'Sonos', '00:0E:58': 'Sonos', '7C:2F:80': 'Samsung', '8C:79:F5': 'Samsung',
+    'D0:03:4B': 'Apple', '68:DB:F5': 'Amazon', '40:B4:CD': 'Amazon', 'A4:77:33': 'Google', '1C:F2:9A': 'Google', 'E0:CB:BC': 'Cisco',
+}
 
 
 def mac_vendor_hint(mac: str) -> str:
     prefix = mac.upper().replace('-', ':')[:8]
-    hints = {'2C:CF:67': 'Raspberry Pi', 'B8:27:EB': 'Raspberry Pi', 'DC:A6:32': 'Raspberry Pi', 'E4:5F:01': 'Raspberry Pi', 'D8:3A:DD': 'Raspberry Pi', 'F4:F5:D8': 'Google/Nest', '3C:5C:C4': 'Amazon', 'F0:18:98': 'Apple'}
-    return hints.get(prefix, 'Unknown')
+    if prefix in _OUI:
+        return _OUI[prefix]
+    try:  # locally-administered bit set => randomised/private address (phones rotate these)
+        if int(prefix[:2], 16) & 0x02:
+            return 'Private/Random MAC'
+    except ValueError:
+        pass
+    return 'Unknown'
 
 
 def lan_status() -> Dict[str, Any]:
     def collect():
         arp = run(['ip', 'neigh', 'show'], timeout=3)
+        if not arp.strip() and hostinfo.IS_WINDOWS:
+            win = hostinfo.windows_arp() or []
+            return {'available': True, 'devices': [{'ip': d['ip'], 'mac': d['mac'], 'vendor': mac_vendor_hint(d['mac']), 'hostname': '', 'state': d['state']} for d in win[:100]]}
         devices = []
         for line in arp.splitlines():
             parts = line.split()
@@ -313,6 +344,19 @@ def _running_services(limit: int = 18) -> List[Dict[str, Any]]:
 def _net_io_status() -> Dict[str, Any]:
     now = time.time()
     rows: Dict[str, Dict[str, int]] = {}
+    if not Path('/proc/net/dev').exists():
+        tot = hostinfo.net_bytes()
+        if not tot:
+            return {'available': False, 'error': 'no interface counters on this host', 'interfaces': {}}
+        rows = {'all': {'rx_bytes': tot['rx'], 'tx_bytes': tot['tx']}}
+        prev = _MEM_CACHE.get('net_io_prev')
+        rates = {}
+        if prev and isinstance(prev.get('data'), dict) and 'all' in prev['data']:
+            el = max(0.001, now - float(prev.get('ts', now)))
+            old = prev['data']['all']
+            rates['all'] = {'rx_bps': max(0, round((rows['all']['rx_bytes'] - old['rx_bytes']) / el, 1)), 'tx_bps': max(0, round((rows['all']['tx_bytes'] - old['tx_bytes']) / el, 1))}
+        _MEM_CACHE['net_io_prev'] = {'ts': now, 'data': rows}
+        return {'available': True, 'interfaces': rows, 'rates': rates, 'rx_bps': rates.get('all', {}).get('rx_bps', 0), 'tx_bps': rates.get('all', {}).get('tx_bps', 0)}
     try:
         for line in Path('/proc/net/dev').read_text().splitlines()[2:]:
             if ':' not in line:

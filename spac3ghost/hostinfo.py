@@ -75,10 +75,10 @@ def memory() -> Optional[Dict[str, Any]]:
         return None
 
 
-_win_cpu_prev: Dict[str, int] = {}
+_win_cpu_prev: Dict[str, Dict[str, int]] = {}
 
 
-def windows_cpu_percent() -> Optional[float]:
+def windows_cpu_percent(key: str = 'default') -> Optional[float]:
     """CPU busy % since the previous call (first call returns None)."""
     if not IS_WINDOWS:
         return None
@@ -89,8 +89,8 @@ def windows_cpu_percent() -> Optional[float]:
         ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user))  # type: ignore[attr-defined]
         val = lambda ft: (ft.dwHighDateTime << 32) | ft.dwLowDateTime  # noqa: E731
         cur = {'idle': val(idle), 'total': val(kernel) + val(user)}  # kernel time includes idle
-        prev = dict(_win_cpu_prev)
-        _win_cpu_prev.update(cur)
+        prev = dict(_win_cpu_prev.get(key, {}))
+        _win_cpu_prev[key] = cur
         if not prev:
             return None
         total = max(1, cur['total'] - prev['total'])
@@ -134,3 +134,131 @@ def platform_summary() -> Dict[str, Any]:
     import platform
     return {'os': platform.system() or sys.platform, 'release': platform.release(), 'machine': platform.machine(),
             'python': platform.python_version(), 'cpus': os.cpu_count() or 0}
+
+
+# ---------------------------------------------------------------------------
+# Windows fallbacks for the Linux-only collectors (nmcli / ip neigh / bluetoothctl / /proc/net/dev)
+# ---------------------------------------------------------------------------
+import re
+import subprocess
+
+
+def _run(cmd: List[str], timeout: int = 6) -> str:
+    """Run a helper command; '' on any failure (missing tool, timeout, ...)."""
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+        return r.stdout or ''
+    except Exception:
+        return ''
+
+
+def net_bytes() -> Optional[Dict[str, int]]:
+    """Total rx/tx byte counters across non-loopback interfaces, or None if unavailable."""
+    try:
+        rx = tx = 0
+        for line in Path('/proc/net/dev').read_text().splitlines()[2:]:
+            if ':' not in line:
+                continue
+            iface, rest = line.split(':', 1)
+            if iface.strip() == 'lo':
+                continue
+            parts = rest.split()
+            if len(parts) >= 16:
+                rx += int(parts[0])
+                tx += int(parts[8])
+        return {'rx': rx, 'tx': tx}
+    except Exception:
+        pass
+    if IS_WINDOWS:
+        m = re.search(r'Bytes\s+(\d+)\s+(\d+)', _run(['netstat', '-e'], 4))
+        if m:
+            return {'rx': int(m.group(1)), 'tx': int(m.group(2))}
+    return None
+
+
+def windows_wifi() -> Optional[List[Dict[str, Any]]]:
+    """Visible Wi-Fi networks via netsh, in the same shape parse_nmcli_wifi produces."""
+    if not IS_WINDOWS:
+        return None
+    text = _run(['netsh', 'wlan', 'show', 'networks', 'mode=bssid'], 8)
+    if not text.strip():
+        return None
+    current = None
+    m = re.search(r'^\s*State\s*:\s*connected.*?^\s*SSID\s*:\s*(.+)$', _run(['netsh', 'wlan', 'show', 'interfaces'], 5), re.S | re.M)
+    if m:
+        current = m.group(1).strip()
+    nets: Dict[str, Dict[str, Any]] = {}
+    ssid = None
+    security = ''
+    for raw in text.splitlines():
+        line = raw.strip()
+        m = re.match(r'SSID\s+\d+\s*:\s*(.*)$', line)
+        if m:
+            ssid = m.group(1).strip() or '<hidden>'
+            nets.setdefault(ssid, {'connected': ssid == current, 'ssid': ssid, 'channel': '', 'signal': '0', 'security': ''})
+            continue
+        if ssid is None:
+            continue
+        rec = nets[ssid]
+        m = re.match(r'Authentication\s*:\s*(.+)$', line)
+        if m:
+            rec['security'] = m.group(1).replace('-Personal', '').replace('-Enterprise', '-Ent').strip()
+        m = re.match(r'Signal\s*:\s*(\d+)%', line)
+        if m and int(m.group(1)) >= int(rec['signal']):
+            rec['signal'] = m.group(1)
+        m = re.match(r'Channel\s*:\s*(\d+)', line)
+        if m and not rec['channel']:
+            rec['channel'] = m.group(1)
+    return sorted(nets.values(), key=lambda n: -int(n['signal']))
+
+
+def windows_arp() -> Optional[List[Dict[str, str]]]:
+    """LAN neighbours from the ARP table (dynamic entries only)."""
+    if not IS_WINDOWS:
+        return None
+    out = []
+    for line in _run(['arp', '-a'], 4).splitlines():
+        m = re.match(r'\s*(\d+\.\d+\.\d+\.\d+)\s+([0-9a-fA-F]{2}(?:-[0-9a-fA-F]{2}){5})\s+(\w+)', line)
+        if not m or m.group(3).lower() != 'dynamic':
+            continue
+        ip = m.group(1)
+        if ip.startswith(('224.', '239.', '255.')) or ip.endswith('.255'):
+            continue
+        out.append({'ip': ip, 'mac': m.group(2).replace('-', ':').upper(), 'state': 'REACHABLE'})
+    seen, uniq = set(), []
+    for d in out:  # same MAC on several interfaces -> keep the first
+        key = (d['ip'], d['mac'])
+        if key not in seen:
+            seen.add(key)
+            uniq.append(d)
+    return uniq
+
+
+def windows_bluetooth() -> Optional[Dict[str, Any]]:
+    """Paired Bluetooth devices + adapter presence via PnP."""
+    if not IS_WINDOWS:
+        return None
+    script = ("Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | "
+              "Select-Object Status,FriendlyName,InstanceId | ConvertTo-Json -Compress")
+    raw = _run(['powershell', '-NoProfile', '-NonInteractive', '-Command', script], 12).strip()
+    if not raw:
+        return None
+    import json
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return None
+    data = data if isinstance(data, list) else [data]
+    devices = []
+    for d in data:
+        m = re.search(r'DEV_([0-9A-Fa-f]{12})', d.get('InstanceId') or '')
+        if m:
+            mac = ':'.join(m.group(1)[i:i + 2] for i in range(0, 12, 2)).upper()
+            rec = {'mac': mac, 'name': d.get('FriendlyName') or 'Unknown', 'connected': d.get('Status') == 'OK'}
+            old = next((x for x in devices if x['mac'] == mac), None)
+            if old is None:
+                devices.append(rec)
+            elif rec['connected'] and not old['connected']:
+                old.update(rec)
+    adapter = any('Radio' in (d.get('FriendlyName') or '') or 'Adapter' in (d.get('FriendlyName') or '') or 'Enumerator' in (d.get('FriendlyName') or '') for d in data)
+    return {'powered': adapter or bool(devices), 'devices': devices}

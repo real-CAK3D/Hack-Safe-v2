@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .collectors import active_recon, bluetooth_status, calibrate_tilt_level, full_status, handshake_capture_status, known_devices_status, known_wifi_passwords, lan_status, monitor_mode_status, pwnagotchi_plugins, sensor_status, set_monitor_mode, start_owned_lab_capture, stop_owned_lab_capture, tilt_status, update_known_device, weather_tile_url, wifi_psk_action, wifi_status, wifi_target_action
-from . import __version__, hostinfo
+from . import __version__, hostinfo, metrics
 from .config import load_config, save_config
 from .controls import ai_chat_ask, ai_chat_status, camera_status, external_control, external_status, ir_action, launch_proton_gui, service_status, services_status, set_camera_feed, set_vision_enabled, spicy_tool_action, spicy_tools_status, lab_toys_status, companion_firmware_action, flipper_feature_action, lab_gate_action, nfc_rfid_action, safety_boundary_action, lab_software_action, tailscale_ip, tailscale_status, tailscale_up, tailscale_restart, tailscale_protect, toggle_service, toggle_vpn, vpn_status, select_vpn_profile, connect_vpn_profile
 from .personality import Spac3Voice, choose_mood, event_from_status, merged_faces
@@ -155,6 +155,50 @@ def proxy_godseye(handler, upstream_path: str, rewrite_html: bool = False):
         handler.wfile.write(body)
     except Exception as exc:
         json_response(handler, {'ok': False, 'error': f'Gods Eye proxy failed: {exc}'}, code=502)
+
+def _hostname_of(value: str) -> str:
+    value = (value or '').strip().lower()
+    if value.startswith('['):  # [::1]:8765
+        return value[1:].split(']', 1)[0]
+    return value.rsplit(':', 1)[0] if value.count(':') == 1 else value
+
+
+def _host_allowed(host_header: str) -> bool:
+    """Allow only hosts a legitimate dashboard user would type. Blocks DNS-rebinding pages."""
+    import ipaddress
+    import socket
+    name = _hostname_of(host_header)
+    if not name:
+        return False
+    try:
+        ipaddress.ip_address(name)
+        return True
+    except ValueError:
+        pass
+    extra = {h.strip().lower() for h in os.environ.get('SPAC3GHOST_ALLOWED_HOSTS', '').split(',') if h.strip()}
+    own = {socket.gethostname().lower(), 'localhost'}
+    return name in own or name in extra or '.' not in name or name.endswith(('.ts.net', '.local', '.lan', '.home.arpa'))
+
+
+def check_request(headers, method: str = 'GET'):
+    """Return an error string if the request should be refused, else None.
+
+    The dashboard has powerful unauthenticated POST endpoints (VPN, services, config, lab
+    actions). Without this, any web page you visit could fire requests at
+    http://127.0.0.1:8765 or your tailnet address (CSRF), or rebind a hostname to it.
+    """
+    if not _host_allowed(headers.get('Host', '')):
+        return 'unexpected Host header (set SPAC3GHOST_ALLOWED_HOSTS to allow it)'
+    if (headers.get('Sec-Fetch-Site') or '').lower() == 'cross-site':
+        return 'cross-site request blocked'
+    origin = headers.get('Origin')
+    if origin and origin.lower() != 'null':
+        if urlparse(origin).netloc.lower() != (headers.get('Host') or '').lower():
+            return 'cross-origin request blocked'
+    elif origin and origin.lower() == 'null' and method != 'GET':
+        return 'opaque-origin request blocked'
+    return None
+
 
 def read_json_body(handler):
     length = int(handler.headers.get('Content-Length') or 0)
@@ -307,7 +351,25 @@ def status_snapshot(force=False, wait=False):
 class Handler(BaseHTTPRequestHandler):
     server_version = 'Spac3-Gh0st/0.2'
 
+    def _safely(self, fn):
+        try:
+            return fn()
+        except (BrokenPipeError, ConnectionResetError):
+            return None
+        except Exception as exc:  # noqa: BLE001 - last-resort net so the UI gets an answer
+            sys.stderr.write('[%s] handler error on %s: %r\n' % (time.strftime('%H:%M:%S'), self.path, exc))
+            try:
+                return json_response(self, {'ok': False, 'error': f'{type(exc).__name__}: {exc}'}, code=500)
+            except Exception:
+                return None
+
     def do_GET(self):
+        return self._safely(self._do_get)
+
+    def do_POST(self):
+        return self._safely(self._do_post)
+
+    def _do_get(self):
         parsed = urlparse(self.path)
         path = parsed.path
         self._godseye_query = parsed.query
@@ -319,10 +381,22 @@ class Handler(BaseHTTPRequestHandler):
             return proxy_godseye(self, path)
         if path.startswith(GODSEYE_DEV_PREFIXES):
             return proxy_godseye(self, path)
+        if path.startswith('/api/'):
+            problem = check_request(self.headers, 'GET')
+            if problem:
+                return json_response(self, {'ok': False, 'error': problem}, code=403)
         if path == '/api/status':
             return json_response(self, status_snapshot(wait=False))
         if path == '/api/health':
             return json_response(self, health_payload())
+        if path == '/api/metrics':
+            q = parse_qs(parsed.query)
+            try:
+                since = float((q.get('since') or ['0'])[0])
+                limit = max(1, min(1800, int((q.get('limit') or ['900'])[0])))
+            except ValueError:
+                since, limit = 0.0, 900
+            return json_response(self, metrics.history(since, limit))
         if path == '/api/status/slow':
             force = parsed.query in ('force=1', 'refresh=1')
             return json_response(self, status_snapshot(force=force, wait=True))
@@ -424,10 +498,13 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_POST(self):
+    def _do_post(self):
         parsed = urlparse(self.path)
         path = parsed.path
         self._godseye_query = parsed.query
+        problem = check_request(self.headers, 'POST')
+        if problem:
+            return json_response(self, {'ok': False, 'error': problem}, code=403)
         if path.startswith(GODSEYE_API_PREFIXES):
             return proxy_godseye(self, path)
         if path == '/api/config':
@@ -613,6 +690,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     PLUGINS.load()
+    metrics.start()
     add_event('boot', VOICE.starting())
     _trigger_status_refresh(force=True)
     # SPAC3GHOST_HOST / SPAC3GHOST_PORT override; otherwise bind to the Tailscale IP if up, else loopback.

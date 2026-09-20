@@ -15,7 +15,19 @@ from .vision import configured_feeds, last_analysis, vision_backend_status
 
 
 def _run(cmd: List[str], timeout: int = 8, env: Dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, env=env)
+    """subprocess.run that reports failure through returncode instead of raising.
+
+    A missing tool (returncode 127) or a hung one (124, like `timeout`) used to raise out of
+    the collectors and take the whole status or action request down with it.
+    """
+    try:
+        return subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, env=env)
+    except FileNotFoundError as exc:
+        return subprocess.CompletedProcess(cmd, 127, '', f'{cmd[0]}: not installed ({exc})')
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(cmd, 124, '', f'{cmd[0]}: timed out after {timeout}s')
+    except OSError as exc:
+        return subprocess.CompletedProcess(cmd, 126, '', f'{cmd[0]}: {exc}')
 
 
 def _cmd_output(cmd: List[str], timeout: int = 4) -> str:
