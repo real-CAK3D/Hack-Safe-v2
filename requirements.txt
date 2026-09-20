@@ -1,0 +1,5 @@
+# Core Spac3-Gh0st uses only the Python standard library (Python 3.10+).
+# Optional extras live in:
+#   requirements-vision.txt  camera feed + YOLO detection
+#   requirements-pi.txt      Raspberry Pi GPIO / NFC hardware (install on the Pi only)
+#   requirements-dev.txt     tests

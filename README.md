@@ -8,7 +8,38 @@ Pwnagotchi source reference cloned at: `/home/pi/src/pwnagotchi`
 
 Pwnagotchi is GPLv3. Spac3-Gh0st includes adapted GPLv3 face/voice concepts and ships with a GPLv3 notice in `LICENSE-PWNAGOTCHI-NOTICE.md`.
 
-## Launch
+## Quick start (any machine)
+
+The core dashboard is pure Python 3.10+ standard library. Hardware collectors
+(GPIO, GPS, nmcli, etc.) report "n/a" on machines that lack them instead of failing.
+
+```bash
+python -m venv .venv
+# Windows: .\scripts\start.ps1        Linux/macOS/Pi: ./scripts/start.sh
+```
+
+Then open <http://127.0.0.1:8765>. Optional extras:
+
+| Need | Install |
+| --- | --- |
+| Camera feed / YOLO | `pip install -r requirements-vision.txt` |
+| Pi GPIO / NFC | `pip install -r requirements-pi.txt` (on the Pi) |
+| Run tests | `pip install -r requirements-dev.txt` then `python -m pytest` |
+
+### Environment variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `SPAC3GHOST_ROOT` | repo folder | project root (plugins, web UI) |
+| `SPAC3GHOST_DATA` | `<root>/data` | config, logs of seen devices, captures (git-ignored) |
+| `SPAC3GHOST_HOME` | `~` | where optional third-party apps are looked for (`~/apps/...`) |
+| `SPAC3GHOST_HOST` / `SPAC3GHOST_PORT` | Tailscale IP or `127.0.0.1` / `8765` | bind address |
+| `SPAC3GHOST_TAILSCALE_URL` | empty | dashboard URL shown for your tailnet |
+
+The dashboard has no login. Only bind it to loopback or your Tailscale interface,
+never to a public address.
+
+## Launch (Raspberry Pi)
 
 ```bash
 /home/pi/Desktop/System-Controls/start-spac3-gh0st.sh

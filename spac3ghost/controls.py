@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError
 
 from .config import load_config, save_config
+from .paths import DATA_DIR, HOME, ROOT
 from .vision import configured_feeds, last_analysis, vision_backend_status
 
 
@@ -244,7 +245,7 @@ _CAMERA_CACHE: Dict[str, Any] = {'ts': 0.0, 'data': None}
 _TOOL_CACHE: Dict[str, bool] = {}
 
 
-AI_CHAT_HISTORY = Path('/home/pi/spac3-gh0st/data/ai_chat_history.json')
+AI_CHAT_HISTORY = (ROOT / 'data/ai_chat_history.json')
 
 
 def _http_json(url: str, payload: Dict[str, Any] | None = None, timeout: int = 20) -> Dict[str, Any]:
@@ -682,7 +683,7 @@ LAB_SOFTWARE_DEFS = {
         'label': 'Ollama Local LLM',
         'source': 'https://ollama.com/',
         'home': 'Lab Operations + Local AI',
-        'paths': ['/usr/local/bin/ollama', '/home/pi/.ollama'],
+        'paths': ['/usr/local/bin/ollama', str(HOME / '.ollama')],
         'commands': ['ollama'],
         'unit': 'ollama.service',
         'unit_scope': 'system',
@@ -696,7 +697,7 @@ LAB_SOFTWARE_DEFS = {
         'label': 'Open WebUI',
         'source': 'https://github.com/open-webui/open-webui',
         'home': 'Lab Operations + Local AI',
-        'paths': ['/home/pi/apps/open-webui', '/home/pi/open-webui', '/opt/open-webui'],
+        'paths': [str(HOME / 'apps/open-webui'), str(HOME / 'open-webui'), '/opt/open-webui'],
         'commands': ['open-webui'],
         'unit': 'open-webui.service',
         'unit_scope': 'system',
@@ -711,7 +712,7 @@ LAB_SOFTWARE_DEFS = {
         'label': 'Uptime Kuma',
         'source': 'https://github.com/louislam/uptime-kuma',
         'home': 'Operations + Monitoring',
-        'paths': ['/home/pi/apps/uptime-kuma', '/home/pi/uptime-kuma'],
+        'paths': [str(HOME / 'apps/uptime-kuma'), str(HOME / 'uptime-kuma')],
         'commands': ['docker'],
         'unit': 'uptime-kuma.service',
         'unit_scope': 'user',
@@ -753,7 +754,7 @@ LAB_SOFTWARE_DEFS = {
         'label': 'Hermes Workspace',
         'source': 'https://hermes-agent.nousresearch.com/docs',
         'home': 'Operations + Hermes',
-        'paths': ['/home/pi/.hermes'],
+        'paths': [str(HOME / '.hermes')],
         'commands': ['node'],
         'unit': 'hermes-workspace.service',
         'unit_scope': 'user',
@@ -767,7 +768,7 @@ LAB_SOFTWARE_DEFS = {
         'label': "God's Eye View",
         'source': 'https://github.com/bilawalsidhu/gods-eye-view',
         'home': 'Vision + OSINT Globe',
-        'paths': ['/home/pi/apps/gods-eye-view', '/home/pi/spac3-gh0st/web/godseye-app'],
+        'paths': [str(HOME / 'apps/gods-eye-view'), str(ROOT / 'web/godseye-app')],
         'commands': ['node', 'npm'],
         'unit': 'godseye-live.service',
         'unit_scope': 'user',
@@ -795,7 +796,7 @@ LAB_SOFTWARE_DEFS = {
         'label': 'Syncthing',
         'source': 'https://syncthing.net/',
         'home': 'Sync + Services',
-        'paths': ['/home/pi/.local/state/syncthing', '/home/pi/.config/syncthing'],
+        'paths': [str(HOME / '.local/state/syncthing'), str(HOME / '.config/syncthing')],
         'commands': ['syncthing'],
         'unit': 'syncthing@pi.service',
         'unit_scope': 'system',
@@ -809,7 +810,7 @@ LAB_SOFTWARE_DEFS = {
         'label': 'Bjorn CyberViking',
         'source': 'https://github.com/infinition/Bjorn',
         'home': 'Lab Operations + RF Audit',
-        'paths': ['/home/pi/apps/Bjorn', '/home/pi/Bjorn'],
+        'paths': [str(HOME / 'apps/Bjorn'), str(HOME / 'Bjorn')],
         'commands': ['nmap', 'python3'],
         'unit': 'bjorn-safe-manual.service',
         'unit_scope': 'user',
@@ -822,7 +823,7 @@ LAB_SOFTWARE_DEFS = {
         'label': 'Project N.O.M.A.D',
         'source': 'https://github.com/Crosstalk-Solutions/project-nomad',
         'home': 'Lab Operations + Field Kit',
-        'paths': ['/home/pi/apps/project-nomad', '/home/pi/project-nomad'],
+        'paths': [str(HOME / 'apps/project-nomad'), str(HOME / 'project-nomad')],
         'commands': ['git', 'docker'],
         'unit': 'project-nomad.service',
         'unit_scope': 'user',
@@ -836,7 +837,7 @@ LAB_SOFTWARE_DEFS = {
         'label': 'Raspberry Pi Security Lab',
         'source': 'https://github.com/ExploitGd/raspberry-pi-security-lab',
         'home': 'Defensive Ops + Lab Operations',
-        'paths': ['/home/pi/apps/raspberry-pi-security-lab', '/home/pi/raspberry-pi-security-lab'],
+        'paths': [str(HOME / 'apps/raspberry-pi-security-lab'), str(HOME / 'raspberry-pi-security-lab')],
         'commands': ['git', 'ufw', 'fail2ban-client', 'suricata', 'python3'],
         'unit': '',
         'unit_scope': 'system',
@@ -876,7 +877,7 @@ LAB_SOFTWARE_DEFS = {
         'label': 'RuView WiFi Sensing',
         'source': 'https://github.com/ruvnet/RuView',
         'home': 'Signals + RF/CSI + Home Assistant',
-        'paths': ['/home/pi/apps/RuView', '/home/pi/spac3-gh0st/web/ruview'],
+        'paths': [str(HOME / 'apps/RuView'), str(ROOT / 'web/ruview')],
         'commands': ['git', 'python3'],
         'unit': '',
         'unit_scope': 'user',
@@ -904,7 +905,7 @@ LAB_SOFTWARE_DEFS = {
         'label': 'CyberRadar Reference',
         'source': 'https://github.com/ahmedhamdy3hh/cyberradar',
         'home': 'Defensive Ops + Situation Radar',
-        'paths': ['/home/pi/apps/cyberradar'],
+        'paths': [str(HOME / 'apps/cyberradar')],
         'commands': ['git', 'python3'],
         'unit': '',
         'unit_scope': 'user',
@@ -918,7 +919,7 @@ LAB_SOFTWARE_DEFS = {
         'label': 'Flock Camera Pi Reference',
         'source': 'https://github.com/search?q=flock+camera+raspberry+pi&type=repositories',
         'home': 'Externals + Vision',
-        'paths': ['/home/pi/apps/flock-camera-reference'],
+        'paths': [str(HOME / 'apps/flock-camera-reference')],
         'commands': ['git', 'python3'],
         'unit': '',
         'unit_scope': 'user',
@@ -932,7 +933,7 @@ LAB_SOFTWARE_DEFS = {
         'label': 'PayloadsAllTheThings',
         'source': 'https://github.com/swisskyrepo/PayloadsAllTheThings',
         'home': 'Reference Library',
-        'paths': ['/home/pi/apps/security-references/PayloadsAllTheThings'],
+        'paths': [str(HOME / 'apps/security-references/PayloadsAllTheThings')],
         'commands': ['git'],
         'unit': '', 'unit_scope': 'user', 'url': '',
         'summary': 'Curated security testing notes/reference content. Stored locally as read-only reference; not executable payload launcher.',
@@ -944,7 +945,7 @@ LAB_SOFTWARE_DEFS = {
         'label': 'HackTricks',
         'source': 'https://github.com/HackTricks-wiki/hacktricks',
         'home': 'Reference Library',
-        'paths': ['/home/pi/apps/security-references/hacktricks'],
+        'paths': [str(HOME / 'apps/security-references/hacktricks')],
         'commands': ['git'],
         'unit': '', 'unit_scope': 'user', 'url': '',
         'summary': 'HackTricks security knowledge base as local reference docs where storage permits.',
@@ -956,7 +957,7 @@ LAB_SOFTWARE_DEFS = {
         'label': 'SecLists',
         'source': 'https://github.com/danielmiessler/SecLists',
         'home': 'Reference Library',
-        'paths': ['/home/pi/apps/security-references/SecLists'],
+        'paths': [str(HOME / 'apps/security-references/SecLists')],
         'commands': ['git'],
         'unit': '', 'unit_scope': 'user', 'url': '',
         'summary': 'Security test wordlists. Large repo; clone is explicit and remains reference inventory, not an attack runner.',
@@ -968,7 +969,7 @@ LAB_SOFTWARE_DEFS = {
         'label': 'Awesome Hacking',
         'source': 'https://github.com/Hack-with-Github/Awesome-Hacking',
         'home': 'Reference Library',
-        'paths': ['/home/pi/apps/security-references/Awesome-Hacking'],
+        'paths': [str(HOME / 'apps/security-references/Awesome-Hacking')],
         'commands': ['git'],
         'unit': '', 'unit_scope': 'user', 'url': '',
         'summary': 'Curated links to security tools and references; local clone is a launch/reference index only.',
@@ -980,7 +981,7 @@ LAB_SOFTWARE_DEFS = {
         'label': 'Awesome Bug Bounty',
         'source': 'https://github.com/djadmin/awesome-bug-bounty',
         'home': 'Reference Library',
-        'paths': ['/home/pi/apps/security-references/awesome-bug-bounty'],
+        'paths': [str(HOME / 'apps/security-references/awesome-bug-bounty')],
         'commands': ['git'],
         'unit': '', 'unit_scope': 'user', 'url': '',
         'summary': 'Bug bounty programs/writeups reference index. For authorized programs only.',
@@ -992,7 +993,7 @@ LAB_SOFTWARE_DEFS = {
         'label': 'Z4nzu HackingTool',
         'source': 'https://github.com/Z4nzu/hackingtool',
         'home': 'Reference Library',
-        'paths': ['/home/pi/apps/security-references/hackingtool'],
+        'paths': [str(HOME / 'apps/security-references/hackingtool')],
         'commands': ['git', 'python3'],
         'unit': '', 'unit_scope': 'user', 'url': '',
         'summary': 'Large curated security-tool launcher/reference repo. Staged here as docs/code reference only; Spac3-Gh0st will not run its installer or offensive modules from the generic dashboard.',
@@ -1115,7 +1116,7 @@ def lab_software_status() -> Dict[str, Any]:
             unit['active'] = True
             unit['active_text'] = 'external web URL staged'
             unit_exists = True
-        if sid == 'ruview' and Path('/home/pi/spac3-gh0st/web/ruview/index.html').exists():
+        if sid == 'ruview' and (ROOT / 'web/ruview/index.html').exists():
             unit['active'] = True
             unit['active_text'] = 'static UI mirrored under Spac3-Gh0st'
             unit_exists = True
@@ -1221,16 +1222,16 @@ def lab_software_action(module: str, action: str) -> Dict[str, Any]:
             state['last_message'] = f"{meta['label']} is already present; scripts remain manual/review-first."
         else:
             default_targets = {
-                'securitylab': '/home/pi/apps/raspberry-pi-security-lab',
-                'ruview': '/home/pi/apps/RuView',
-                'cyberradar': '/home/pi/apps/cyberradar',
-                'payloadsallthethings': '/home/pi/apps/security-references/PayloadsAllTheThings',
-                'hacktricks': '/home/pi/apps/security-references/hacktricks',
-                'seclists': '/home/pi/apps/security-references/SecLists',
-                'awesomehacking': '/home/pi/apps/security-references/Awesome-Hacking',
-                'awesomebugbounty': '/home/pi/apps/security-references/awesome-bug-bounty',
-                'hackingtool': '/home/pi/apps/security-references/hackingtool',
-                'osirisosint': '/home/pi/apps/security-references/OSIRIS',
+                'securitylab': str(HOME / 'apps/raspberry-pi-security-lab'),
+                'ruview': str(HOME / 'apps/RuView'),
+                'cyberradar': str(HOME / 'apps/cyberradar'),
+                'payloadsallthethings': str(HOME / 'apps/security-references/PayloadsAllTheThings'),
+                'hacktricks': str(HOME / 'apps/security-references/hacktricks'),
+                'seclists': str(HOME / 'apps/security-references/SecLists'),
+                'awesomehacking': str(HOME / 'apps/security-references/Awesome-Hacking'),
+                'awesomebugbounty': str(HOME / 'apps/security-references/awesome-bug-bounty'),
+                'hackingtool': str(HOME / 'apps/security-references/hackingtool'),
+                'osirisosint': str(HOME / 'apps/security-references/OSIRIS'),
             }
             target = Path(default_targets[module])
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -1838,9 +1839,9 @@ def lab_workflows_status() -> Dict[str, Any]:
     cfg = _lab_workflow_config()
     save_config(cfg)
     states = cfg.get('lab_workflows', {})
-    handshakes_dir = Path('/home/pi/handshakes')
+    handshakes_dir = (HOME / 'handshakes')
     if not handshakes_dir.exists():
-        handshakes_dir = Path('/home/pi/spac3-gh0st/data/handshakes')
+        handshakes_dir = (ROOT / 'data/handshakes')
     captures = []
     try:
         captures = sorted([p.name for p in handshakes_dir.glob('*') if p.suffix.lower() in ('.pcap', '.pcapng', '.cap', '.22000', '.hc22000')])[-8:]
@@ -1908,10 +1909,10 @@ def companion_firmware_action(companion: str, action: str) -> Dict[str, Any]:
 
 def nfc_rfid_status() -> Dict[str, Any]:
     crowpi_refs = [
-        '/home/pi/Desktop/CrowPi/QA.py',
-        '/home/pi/Desktop/CrowPi/MFRC522.py',
-        '/home/pi/Desktop/CrowPi/Minecraft/nfc_block_read.py',
-        '/home/pi/Desktop/CrowPi/Minecraft/nfc_block_writer.py',
+        str(HOME / 'Desktop/CrowPi/QA.py'),
+        str(HOME / 'Desktop/CrowPi/MFRC522.py'),
+        str(HOME / 'Desktop/CrowPi/Minecraft/nfc_block_read.py'),
+        str(HOME / 'Desktop/CrowPi/Minecraft/nfc_block_writer.py'),
     ]
     refs = [p for p in crowpi_refs if Path(p).exists()]
     imports = {}
@@ -2033,7 +2034,7 @@ def hardware_docks_status() -> Dict[str, Any]:
     links = _cmd_output(['bash', '-lc', 'ip -o link 2>/dev/null | cut -d: -f2 | tr -d " "'], timeout=4).splitlines()
     lirc_devs = sorted(str(p) for p in Path('/dev').glob('lirc*'))
     gpiochips = sorted(str(p) for p in Path('/dev').glob('gpiochip*'))
-    esptool = '/home/pi/.venvs/esptool/bin/esptool' if Path('/home/pi/.venvs/esptool/bin/esptool').exists() else ''
+    esptool = str(HOME / '.venvs/esptool/bin/esptool') if (HOME / '.venvs/esptool/bin/esptool').exists() else ''
     usb_lower = usb.lower()
     esp_matches = [line for line in usb.splitlines() if any(tok in line.lower() for tok in ('303a:', '10c4:', '1a86:7523', '1a86:55d4', 'cp210', 'ch340', 'esp'))]
     rtl_sdr_matches = [line for line in usb.splitlines() if any(tok in line.lower() for tok in ('0bda:2832', '0bda:2838', 'rtl2832', 'rtl-sdr'))]

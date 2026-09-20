@@ -6,8 +6,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict
 
-ROOT = Path(os.environ.get('SPAC3GHOST_ROOT', '/home/pi/spac3-gh0st'))
-DATA_DIR = ROOT / 'data'
+from .paths import DATA_DIR, HOME, ROOT
+
 CONFIG_FILE = DATA_DIR / 'config.json'
 
 DEFAULT_CONFIG: Dict[str, Any] = {
@@ -491,10 +491,15 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         'adapter_status': True,
     },
     'hotspot': {
-        'desired_ssid': 'Wu-Tang LAN',
-        'desired_password': 'WTCAN2FW',
-        'password_hint_response': "Wu-Tang Lan aint nuthin' to fuck with",
-        'note': 'WTCAN2FW is 8 characters, so it is valid for WPA/WPA2 hotspot use.'
+        # Secrets do not belong in source control. Set desired_password in the
+        # git-ignored data/config.json (WPA2 needs 8-63 characters).
+        'desired_ssid': 'Spac3-Gh0st',
+        'desired_password': '',
+    },
+    'tailscale': {
+        # Full dashboard URL on your tailnet, e.g. http://my-pi.tailXXXX.ts.net:8765
+        # (also settable via SPAC3GHOST_TAILSCALE_URL). Empty = don't advertise one.
+        'url': '',
     }
 }
 
@@ -532,7 +537,7 @@ def _normalize(config: Dict[str, Any]) -> Dict[str, Any]:
     for feed in DEFAULT_CONFIG['vision']['feeds']:
         if str(feed.get('id')) not in configured_ids:
             vision['feeds'].append(deepcopy(feed))
-    if vision.get('ai_backend') in ('', 'not_configured') and Path('/home/pi/yolov8n.pt').exists():
+    if vision.get('ai_backend') in ('', 'not_configured') and (HOME / 'yolov8n.pt').exists():
         vision['ai_backend'] = 'yolo'
     return config
 

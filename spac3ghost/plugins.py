@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from .config import load_config
+from .paths import PLUGIN_DIR
 
-PLUGIN_DIR = Path('/home/pi/spac3-gh0st/plugins')
 
 
 class PluginManager:

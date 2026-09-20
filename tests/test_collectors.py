@@ -1,9 +1,16 @@
 import unittest
+from unittest import mock
 
 from spac3ghost.collectors import parse_nmcli_wifi, parse_bluetooth_devices, mac_vendor_hint, _annotate_tilt_event, _alert_status
 
 
 class CollectorTests(unittest.TestCase):
+    def setUp(self):
+        # Pin calibration so these tests don't depend on the default/live config.
+        patcher = mock.patch('spac3ghost.collectors._tilt_level_raw', return_value=0)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_parse_nmcli_wifi_colon_escaped_rows(self):
         text = "yes:Space\\:Brigade:40:80:WPA2\nno:LabNet:6:55:WPA1 WPA2\n"
         rows = parse_nmcli_wifi(text)

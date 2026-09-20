@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 import signal
 import sys
 import threading
@@ -17,11 +18,11 @@ from .collectors import active_recon, bluetooth_status, calibrate_tilt_level, fu
 from .config import load_config, save_config
 from .controls import ai_chat_ask, ai_chat_status, camera_status, external_control, external_status, ir_action, launch_proton_gui, service_status, services_status, set_camera_feed, set_vision_enabled, spicy_tool_action, spicy_tools_status, lab_toys_status, companion_firmware_action, flipper_feature_action, lab_gate_action, nfc_rfid_action, safety_boundary_action, lab_software_action, tailscale_ip, tailscale_status, tailscale_up, tailscale_restart, tailscale_protect, toggle_service, toggle_vpn, vpn_status, select_vpn_profile, connect_vpn_profile
 from .personality import Spac3Voice, choose_mood, event_from_status, merged_faces
+from .paths import ROOT, WEB_DIR
 from .plugins import PluginManager
 from .vision import SNAP_DIR, analyze_current_frame, clear_vision_history, jpeg_frame, vision_history
 
-ROOT = Path('/home/pi/spac3-gh0st')
-WEB = ROOT / 'web'
+WEB = WEB_DIR
 EVENTS = []
 LAST_CHATTER = 0
 LAST_PLUGIN_PANELS = []
@@ -214,7 +215,8 @@ def _collect_status_payload():
     status = results.pop('base') if isinstance(results.get('base'), dict) else {'time': int(time.time()), 'error': results.get('base')}
     for key in ('vpn', 'tailscale', 'vision', 'vision_history', 'controls', 'spicy_tools', 'lab_toys', 'externals'):
         status[key] = results.get(key)
-    status['tailscale_url'] = 'http://hack-safe.tailac984b.ts.net:8765' if results.get('tailscale_ip') else ''
+    ts_url = os.environ.get('SPAC3GHOST_TAILSCALE_URL') or load_config().get('tailscale', {}).get('url') or ''
+    status['tailscale_url'] = ts_url if results.get('tailscale_ip') else ''
     status['collector_latency_ms'] = int((time.time() - started) * 1000)
     status['native_plugins'] = PLUGINS.describe()
     mood = choose_mood(status)
@@ -593,7 +595,9 @@ def main():
     PLUGINS.load()
     add_event('boot', VOICE.starting())
     _trigger_status_refresh(force=True)
-    host, port = tailscale_ip() or '127.0.0.1', 8765
+    # SPAC3GHOST_HOST / SPAC3GHOST_PORT override; otherwise bind to the Tailscale IP if up, else loopback.
+    host = os.environ.get('SPAC3GHOST_HOST') or tailscale_ip() or '127.0.0.1'
+    port = int(os.environ.get('SPAC3GHOST_PORT') or 8765)
     httpd = ThreadingHTTPServer((host, port), Handler)
     print(f'Spac3-Gh0st listening at http://{host}:{port}', flush=True)
     def stop(*_):

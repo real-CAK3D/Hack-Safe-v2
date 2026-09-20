@@ -381,6 +381,7 @@ def _mood_payload(name: str, now: float | None, salt: str) -> Dict[str, str]:
         'evening': ('evening', '#bf5af2'),
         'night': ('night', '#bf5af2'),
         'skyclear': ('curious', '#27c93f'),
+        'lonely': ('lonely', '#8e8e93'),
         'curious': ('curious', '#27c93f'),
         'daylight': ('bright', '#ffbd2e'),
     }
@@ -414,6 +415,11 @@ def choose_mood(status: Dict[str, Any], now: float | None = None) -> Dict[str, s
         return {'name': 'warm', 'face': _face('warm', now, salt), 'color': '#ffbd2e'}
     if alert.get('level') == 'RED' or wifi.get('new_count', 0) or lan.get('new_count', 0):
         return {'name': 'alert', 'face': _face('alert', now, salt), 'color': '#ffbd2e'}
+
+    # Explicitly offline with nothing in range: lonely. Requires wifi.connected to be
+    # False (not merely missing) so a cold/empty status doesn't look lonely.
+    if wifi.get('connected') is False and not (wifi.get('networks') or lan.get('devices') or bt.get('devices')):
+        return {'name': 'lonely', 'face': _face('lonely', now, salt), 'color': '#8e8e93'}
 
     # Face mood is primarily time/major-mode. Ordinary weather is a flavor:
     # rain/storm/etc. should occasionally surface, then normal companion moods
@@ -498,7 +504,11 @@ def event_from_status(status: Dict[str, Any]) -> Dict[str, Any]:
 
     # The face/mood shows time/weather/major mode; the phrase reports what is happening now.
     ambient = _ambient_phrase(voice, status, mood, temp)
-    if ambient and mood not in ('hot', 'warm', 'alert'):
+    down = [name for name, info in (status.get('services') or {}).items() if isinstance(info, dict) and not info.get('active')]
+    if down and mood not in ('hot', 'warm', 'alert'):
+        # A service being down outranks ambient chatter; it used to be shadowed by time-of-day moods.
+        text, kind = voice.service(down[0], False), 'service'
+    elif ambient and mood not in ('hot', 'warm', 'alert'):
         text, kind = ambient
     elif mood == 'hot' and isinstance(temp, (int, float)):
         text, kind = voice.hot(temp), 'thermal'
@@ -527,15 +537,11 @@ def event_from_status(status: Dict[str, Any]) -> Dict[str, Any]:
     elif mood == 'cloaked':
         text, kind = voice.configured('cloaked', ['Cloak vibes detected. Packets wearing fake mustaches.']), 'vpn'
     else:
-        down = [name for name, info in status.get('services', {}).items() if isinstance(info, dict) and not info.get('active')]
-        if down:
-            text, kind = voice.service(down[0], False), 'service'
+        gps = sensors.get('gps', {}) if isinstance(sensors, dict) else {}
+        if gps:
+            text, kind = voice.gps(gps.get('modeLabel', 'NO FIX'), gps.get('satellitesUsed') or 0), 'gps'
         else:
-            gps = sensors.get('gps', {}) if isinstance(sensors, dict) else {}
-            if gps:
-                text, kind = voice.gps(gps.get('modeLabel', 'NO FIX'), gps.get('satellitesUsed') or 0), 'gps'
-            else:
-                wifi = status.get('wifi', {})
-                text, kind = voice.wifi_scan(len(wifi.get('networks') or [])) if 'networks' in wifi else voice.idle(), 'wifi'
+            wifi = status.get('wifi', {})
+            text, kind = voice.wifi_scan(len(wifi.get('networks') or [])) if 'networks' in wifi else voice.idle(), 'wifi'
     return {'ts': int(time.time()), 'kind': kind, 'text': text}
 

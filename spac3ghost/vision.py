@@ -8,10 +8,10 @@ from typing import Any, Dict, List, Tuple
 from urllib.request import Request, urlopen
 
 from .config import load_config
+from .paths import DATA_DIR, HOME, ROOT
 
-MODEL_PATHS = [Path('/home/pi/yolov8n.pt'), Path('/home/pi/spac3-gh0st/models/yolov8n.pt')]
+MODEL_PATHS = [(HOME / 'yolov8n.pt'), (ROOT / 'models/yolov8n.pt')]
 DEFAULT_DEVICE = '/dev/video0'
-DATA_DIR = Path('/home/pi/spac3-gh0st/data')
 VISION_HISTORY_FILE = DATA_DIR / 'vision_history.json'
 SNAP_DIR = DATA_DIR / 'vision_snaps'
 _MODEL = None
@@ -390,10 +390,29 @@ def last_analysis() -> Dict[str, Any]:
     return dict(_LAST_ANALYSIS)
 
 
+def _svg_placeholder(message: str) -> Tuple[bytes, str]:
+    """Dependency-free placeholder used when OpenCV/numpy are not installed."""
+    from html import escape
+    lines = [message[i:i + 46] for i in range(0, len(message), 46)][:5]
+    text = ''.join(f'<text x="28" y="{135 + 34 * n}" fill="#bfffcd" font-size="20">{escape(part)}</text>' for n, part in enumerate(lines))
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" font-family="monospace">'
+        '<rect width="640" height="360" fill="#050808"/>'
+        '<text x="28" y="70" fill="#50ff78" font-size="30" font-weight="bold">SPAC3-GH0ST VISION</text>'
+        f'{text}</svg>'
+    )
+    return svg.encode('utf-8'), 'image/svg+xml'
+
+
 def jpeg_frame(with_detections: bool = True, feed_id: str | None = None) -> Tuple[bytes, str]:
     global _LAST_JPEG
-    cv2 = _cv2()
     cfg = load_config().get('vision', {})
+    try:
+        cv2 = _cv2()
+        _np()
+    except ImportError:
+        why = 'Vision is OFF.' if not cfg.get('enabled') else 'Camera needs OpenCV.'
+        return _svg_placeholder(f'{why} Install optional deps: pip install -r requirements-vision.txt')
     feed = select_feed(cfg, feed_id)
     key = str(feed.get('id') or 'local')
     if not cfg.get('enabled'):

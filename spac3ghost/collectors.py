@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from .config import load_config, save_config
+from .paths import DATA_DIR, HOME, ROOT
 
-DATA_DIR = Path('/home/pi/spac3-gh0st/data')
 SEEN_FILE = DATA_DIR / 'seen.json'
 KNOWN_DEVICES_FILE = DATA_DIR / 'known_devices.json'
 STATUS_HISTORY_FILE = DATA_DIR / 'status_history.json'
@@ -27,8 +27,8 @@ WIFI_PSK_ACTIONS_FILE = DATA_DIR / 'wifi_psk_actions.json'
 GPS_TRAIL_FILE = DATA_DIR / 'gps_trail.json'
 HANDSHAKE_DIR = DATA_DIR / 'handshakes'
 CAPTURE_STATE_FILE = DATA_DIR / 'handshake_capture.json'
-CROWPI_STATUS = Path('/home/pi/Desktop/System-Controls/crowpi_status.py')
-PWN_PLUGINS = Path('/home/pi/src/pwnagotchi/pwnagotchi/plugins')
+CROWPI_STATUS = (HOME / 'Desktop/System-Controls/crowpi_status.py')
+PWN_PLUGINS = (HOME / 'src/pwnagotchi/pwnagotchi/plugins')
 _MEM_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
@@ -807,7 +807,7 @@ def pwn_channel_plan(networks: List[Dict[str, Any]], supported_channels: List[in
     return sorted(stats.values(), key=lambda row: (-row['aps'], -row['max_signal'], row['channel']))[:24]
 
 
-def build_owned_lab_capture_plan(interface: str, bssid: str = '', channel: int | None = None, owned_lab: bool = False, capture_dir: str = '/home/pi/spac3-gh0st/data/handshakes') -> Dict[str, Any]:
+def build_owned_lab_capture_plan(interface: str, bssid: str = '', channel: int | None = None, owned_lab: bool = False, capture_dir: str = '') -> Dict[str, Any]:
     """Return a passive WPA handshake capture command plan for an owned lab only."""
     if not owned_lab:
         return {'ok': False, 'error': 'Refusing capture plan without owned_lab=true. Use only against CAK3D-owned lab networks/adapters.'}
@@ -815,6 +815,7 @@ def build_owned_lab_capture_plan(interface: str, bssid: str = '', channel: int |
         return {'ok': False, 'error': 'monitor interface is required'}
     if bssid and not re.fullmatch(r'(?i)[0-9a-f]{2}(:[0-9a-f]{2}){5}', bssid):
         return {'ok': False, 'error': 'invalid BSSID format'}
+    capture_dir = capture_dir or str(HANDSHAKE_DIR)
     argv = ['airodump-ng', '-w', f'{capture_dir}/capture', '--output-format', 'pcap']
     if bssid:
         argv += ['--bssid', bssid.upper()]
@@ -1316,7 +1317,7 @@ def security_stack_status() -> Dict[str, Any]:
             return Path(path).exists()
         except Exception:
             return False
-    repo_paths = ['/home/pi/apps/raspberry-pi-security-lab', '/home/pi/raspberry-pi-security-lab']
+    repo_paths = [str(HOME / 'apps/raspberry-pi-security-lab'), str(HOME / 'raspberry-pi-security-lab')]
     repo_present = [p for p in repo_paths if file_exists(p)]
     ufw = run(['sh', '-lc', 'ufw status 2>/dev/null | head -1'], timeout=2).strip()
     fail2ban = svc_state('fail2ban')

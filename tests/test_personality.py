@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 from spac3ghost.personality import FACE, Spac3Voice, choose_mood, event_from_status
 
@@ -46,7 +47,9 @@ class PersonalityTests(unittest.TestCase):
 
     def test_event_from_status_reports_gps_fix(self):
         status = {"sensors": {"gps": {"fixed": True, "modeLabel": "3D FIX", "satellitesUsed": 6}}}
-        event = event_from_status(status)
+        # GPS is the fallback report when no time-of-day/ambient phrase applies.
+        with mock.patch('spac3ghost.personality.choose_mood', return_value={'name': 'curious'}):
+            event = event_from_status(status)
         self.assertIn("GPS", event["text"])
         self.assertEqual(event["kind"], "gps")
 
