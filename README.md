@@ -8,6 +8,15 @@ Pwnagotchi source reference cloned at: `/home/pi/src/pwnagotchi`
 
 Pwnagotchi is GPLv3. Spac3-Gh0st includes adapted GPLv3 face/voice concepts and ships with a GPLv3 notice in `LICENSE-PWNAGOTCHI-NOTICE.md`.
 
+## v2 highlights
+
+- Redesigned glass UI with 10 themes (`T` cycles), live vitals strip with sparklines, toasts, collapsible cards, mobile layout.
+- Command palette: `Ctrl/Cmd+K` (or `/`) to jump to any tab/card or run scans, refresh, export. `?` lists all shortcuts.
+- Works on Windows/macOS/Linux, not just a Pi (cross-platform metrics, portable paths).
+- `/api/health` liveness endpoint and a live connection indicator.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list.
+
 ## Quick start (any machine)
 
 The core dashboard is pure Python 3.10+ standard library. Hardware collectors

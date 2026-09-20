@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from .config import load_config, save_config
+from . import hostinfo
 from .paths import DATA_DIR, HOME, ROOT
 
 SEEN_FILE = DATA_DIR / 'seen.json'
@@ -179,7 +180,7 @@ def _mem_status() -> Dict[str, Any]:
             'detail_text': f"{used_mb} MB used out of {total_mb} MB; {available_mb} MB available" if pct is not None else 'n/a',
         }
     except Exception:
-        return {'text': 'n/a'}
+        return hostinfo.memory() or {'text': 'n/a'}
 
 
 def _load_status() -> str:
@@ -208,7 +209,8 @@ def _cpu_model() -> str:
                     return val
     except Exception:
         pass
-    return ''
+    import platform
+    return platform.processor() or ''
 
 
 def _throttle_status() -> Dict[str, Any]:
@@ -242,6 +244,8 @@ def _cpu_live_status() -> Dict[str, Any]:
         total_delta = max(1, total_now - total_old)
         idle_delta = max(0, idle_now - idle_old)
         pct = round((1 - (idle_delta / total_delta)) * 100, 1)
+    if pct is None and hostinfo.IS_WINDOWS:
+        pct = hostinfo.windows_cpu_percent()
     cores = []
     try:
         for line in Path('/proc/stat').read_text().splitlines():
@@ -260,7 +264,7 @@ def _cpu_live_status() -> Dict[str, Any]:
         governor = Path('/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor').read_text().strip()
     except Exception:
         pass
-    return {'available': bool(cur), 'percent': pct, 'freq_mhz': freq_mhz, 'governor': governor, 'model': _cpu_model(), 'cores': len(cores) or os.cpu_count() or 0, 'load_percent_1m': round((os.getloadavg()[0] / max(1, os.cpu_count() or 1)) * 100, 1) if hasattr(os, 'getloadavg') else None, 'throttle': _throttle_status()}
+    return {'available': bool(cur) or hostinfo.IS_WINDOWS, 'percent': pct, 'freq_mhz': freq_mhz, 'governor': governor, 'model': _cpu_model(), 'cores': len(cores) or os.cpu_count() or 0, 'load_percent_1m': round((os.getloadavg()[0] / max(1, os.cpu_count() or 1)) * 100, 1) if hasattr(os, 'getloadavg') else None, 'throttle': _throttle_status()}
 
 
 def _disk_all_status() -> List[Dict[str, Any]]:
@@ -270,7 +274,7 @@ def _disk_all_status() -> List[Dict[str, Any]]:
         parts = line.split()
         if len(parts) >= 6:
             rows.append({'filesystem': parts[0], 'size': parts[1], 'used': parts[2], 'avail': parts[3], 'use_percent': parts[4], 'mount': parts[5]})
-    return rows[:12]
+    return (rows or hostinfo.disks())[:12]
 
 
 def _top_processes(limit: int = 10) -> List[Dict[str, Any]]:
@@ -280,6 +284,19 @@ def _top_processes(limit: int = 10) -> List[Dict[str, Any]]:
         parts = line.split(None, 3)
         if len(parts) >= 4:
             rows.append({'pid': parts[0], 'command': parts[1], 'cpu': parts[2], 'memory': parts[3]})
+    if not rows and hostinfo.IS_WINDOWS:
+        import csv
+        import io
+        out = run(['tasklist', '/fo', 'csv', '/nh'], timeout=4)
+        procs = []
+        for r in csv.reader(io.StringIO(out)):
+            if len(r) >= 5:
+                try:
+                    procs.append((int(r[4].replace(',', '').split()[0]), r[0], r[1]))
+                except Exception:
+                    continue
+        for kb, name, pid in sorted(procs, reverse=True)[:limit]:
+            rows.append({'pid': pid, 'command': name, 'cpu': 'n/a', 'memory': f'{kb // 1024} MB'})
     return rows
 
 
@@ -349,17 +366,22 @@ def system_status() -> Dict[str, Any]:
         temp = int(Path('/sys/class/thermal/thermal_zone0/temp').read_text().strip()) / 1000.0
     except Exception:
         pass
-    df_lines = run(['df', '-h', '/'], timeout=2).splitlines()
+    df_lines = [ln for ln in run(['df', '-h', '/'], timeout=2).splitlines() if not ln.startswith('ERROR')]
     disk_root = df_lines[-1] if df_lines else ''
+    if not disk_root:
+        first = (hostinfo.disks(1) or [{}])[0]
+        disk_root = ' '.join(str(first.get(k, '')) for k in ('filesystem', 'size', 'used', 'avail', 'use_percent', 'mount')).strip()
+    ips = run(['hostname', '-I'], timeout=2).strip().split() if not hostinfo.IS_WINDOWS else []
     return {
         'hostname': socket.gethostname(),
-        'uptime_s': int(float(Path('/proc/uptime').read_text().split()[0])),
+        'platform': hostinfo.platform_summary(),
+        'uptime_s': hostinfo.uptime_s(),
         'cpu_temp_c': temp,
         'cpu_temp_f': round((temp * 9 / 5) + 32, 1) if isinstance(temp, (int, float)) else None,
         'load': _load_status(),
         'cpu_live': _cpu_live_status(),
         'memory': _mem_status(),
-        'ips': run(['hostname', '-I'], timeout=2).strip().split(),
+        'ips': ips or hostinfo.local_ips(),
         'disk_root': disk_root,
         'disk_all': _disk_all_status(),
         'net_io': _net_io_status(),
@@ -372,6 +394,8 @@ def system_status() -> Dict[str, Any]:
 def service_status(names=('jellyfin', 'ssh', 'tailscaled', 'gpsd')) -> Dict[str, Any]:
     def collect():
         out = {}
+        if not shutil.which('systemctl'):
+            return out  # not a systemd host: report no services rather than fake "offline" ones
         for name in names:
             active = run(['systemctl', 'is-active', name], timeout=2).strip()
             enabled = run(['systemctl', 'is-enabled', name], timeout=2).strip()

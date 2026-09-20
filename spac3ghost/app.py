@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .collectors import active_recon, bluetooth_status, calibrate_tilt_level, full_status, handshake_capture_status, known_devices_status, known_wifi_passwords, lan_status, monitor_mode_status, pwnagotchi_plugins, sensor_status, set_monitor_mode, start_owned_lab_capture, stop_owned_lab_capture, tilt_status, update_known_device, weather_tile_url, wifi_psk_action, wifi_status, wifi_target_action
+from . import __version__, hostinfo
 from .config import load_config, save_config
 from .controls import ai_chat_ask, ai_chat_status, camera_status, external_control, external_status, ir_action, launch_proton_gui, service_status, services_status, set_camera_feed, set_vision_enabled, spicy_tool_action, spicy_tools_status, lab_toys_status, companion_firmware_action, flipper_feature_action, lab_gate_action, nfc_rfid_action, safety_boundary_action, lab_software_action, tailscale_ip, tailscale_status, tailscale_up, tailscale_restart, tailscale_protect, toggle_service, toggle_vpn, vpn_status, select_vpn_profile, connect_vpn_profile
 from .personality import Spac3Voice, choose_mood, event_from_status, merged_faces
@@ -34,6 +35,23 @@ STATUS_REFRESHING = False
 STATUS_CACHE_LOCK = threading.Lock()
 STATUS_TTL = 20
 STATUS_COLD_WAIT = 2.0
+
+
+STARTED_AT = time.time()
+
+
+def health_payload():
+    """Cheap liveness probe: never touches slow collectors."""
+    plugins = PLUGINS.describe()
+    return {
+        'ok': True,
+        'version': __version__,
+        'uptime_s': int(time.time() - STARTED_AT),
+        'host_uptime_s': hostinfo.uptime_s(),
+        'platform': hostinfo.platform_summary(),
+        'plugins': {'loaded': sum(1 for p in plugins if p.get('loaded')), 'enabled': sum(1 for p in plugins if p.get('enabled')), 'total': len(plugins)},
+        'status_cache_age_s': round(time.time() - STATUS_CACHE_AT, 1) if STATUS_CACHE_AT else None,
+    }
 
 
 def add_event(kind: str, text: str):
@@ -303,6 +321,8 @@ class Handler(BaseHTTPRequestHandler):
             return proxy_godseye(self, path)
         if path == '/api/status':
             return json_response(self, status_snapshot(wait=False))
+        if path == '/api/health':
+            return json_response(self, health_payload())
         if path == '/api/status/slow':
             force = parsed.query in ('force=1', 'refresh=1')
             return json_response(self, status_snapshot(force=force, wait=True))
