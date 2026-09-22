@@ -346,7 +346,7 @@ body.v2-compact .v2-tile .val { font-size: 19px; }
 }
 /* CYD Buddy dock --------------------------------------------------------- */
 .cyd-buddy-viz { display: grid; gap: 10px; }
-.cyd-dock { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--v2-line); border-radius: var(--v2-radius-sm); background: #00000028; }
+.cyd-dock { display: grid; grid-template-columns: 1fr; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--v2-line); border-radius: var(--v2-radius-sm); background: #00000028; }
 .cyd-dock.connected { border-color: color-mix(in srgb, var(--green) 70%, transparent); box-shadow: 0 0 22px -14px var(--green); }
 .cyd-dock.waiting { border-color: color-mix(in srgb, var(--yellow) 45%, transparent); }
 .cyd-face { min-width: 88px; text-align: center; font: 900 clamp(28px, 5vw, 48px)/1 var(--v2-mono); color: var(--green); filter: drop-shadow(0 0 12px currentColor); white-space: nowrap; }
