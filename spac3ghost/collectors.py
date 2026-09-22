@@ -97,6 +97,20 @@ def wifi_status(rescan: bool = False) -> Dict[str, Any]:
         if not networks and hostinfo.IS_WINDOWS:
             networks = hostinfo.windows_wifi() or []
         current = next((n for n in networks if n['connected']), None)
+        # If this Pi is also hosting a CYD/AP network, nmcli marks that AP row as
+        # active in the scan list. For the main dashboard "Wi-Fi" readout prefer
+        # the managed upstream client connection (wlan0/HomelandSecurity_) so the
+        # hotspot does not look like it stole internet.
+        dev_status = run(['nmcli', '-t', '-f', 'DEVICE,TYPE,STATE,CONNECTION', 'dev', 'status'], timeout=3)
+        upstream_ssid = ''
+        for line in dev_status.splitlines():
+            parts = split_nmcli(line)
+            if len(parts) >= 4 and parts[1] == 'wifi' and parts[2] == 'connected' and parts[3] and parts[3] != 'Wu-Tang LAN':
+                upstream_ssid = parts[3]
+                break
+        if upstream_ssid:
+            upstream = next((n for n in networks if n.get('ssid') == upstream_ssid), None)
+            current = dict(upstream or {'ssid': upstream_ssid, 'channel': '', 'signal': '', 'security': ''}, connected=True, device='managed')
         return {'available': True, 'connected': bool(current), 'current': current, 'networks': networks[:40], 'rescan': rescan}
     return cached('wifi_rescan' if rescan else 'wifi_fast', 12 if rescan else 3, collect)
 

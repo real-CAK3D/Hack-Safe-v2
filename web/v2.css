@@ -344,3 +344,19 @@ body.v2-compact .v2-tile .val { font-size: 19px; }
   background: #00000066; border: 1px solid #ffffff22; color: #ffffffd9; backdrop-filter: blur(4px);
   font: 700 9.5px/1.4 var(--v2-ui, system-ui); letter-spacing: 1.2px; text-transform: uppercase; pointer-events: none;
 }
+/* CYD Buddy dock --------------------------------------------------------- */
+.cyd-buddy-viz { display: grid; gap: 10px; }
+.cyd-dock { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--v2-line); border-radius: var(--v2-radius-sm); background: #00000028; }
+.cyd-dock.connected { border-color: color-mix(in srgb, var(--green) 70%, transparent); box-shadow: 0 0 22px -14px var(--green); }
+.cyd-dock.waiting { border-color: color-mix(in srgb, var(--yellow) 45%, transparent); }
+.cyd-face { min-width: 88px; text-align: center; font: 900 clamp(28px, 5vw, 48px)/1 var(--v2-mono); color: var(--green); filter: drop-shadow(0 0 12px currentColor); white-space: nowrap; }
+.cyd-core { display: grid; gap: 4px; min-width: 0; }
+.cyd-core b { color: var(--text); letter-spacing: 1.2px; }
+.cyd-core span, .cyd-core small { color: var(--dim); overflow-wrap: anywhere; }
+.cyd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.cyd-leases { display: grid; gap: 6px; }
+.cyd-lease { display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--v2-line); border-radius: 9px; background: #ffffff06; }
+.cyd-lease span { color: var(--dim); font-family: var(--v2-mono); font-size: 11px; }
+.cyd-endpoints { user-select: text; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 140px; overflow: auto; }
+@media (max-width: 760px) { .cyd-dock { grid-template-columns: 1fr; text-align: center; } .cyd-lease { display: grid; } }
+

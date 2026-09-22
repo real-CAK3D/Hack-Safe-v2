@@ -784,7 +784,7 @@ LAB_SOFTWARE_DEFS = {
         'commands': ['node', 'npm'],
         'unit': 'godseye-live.service',
         'unit_scope': 'user',
-        'url': 'http://100.75.120.80:8765/godseye-live/',
+        'url': 'http://127.0.0.1:8766/godseye-live/',
         'summary': 'Live OSINT globe proxied through Spac3-Gh0st. Heavy Vite dev server is the current CPU hotspot.',
         'needed': ['static fallback exists', 'live Vite service only when needed'],
         'blocked_actions': ['leaving dev server hot when not using the globe', 'unbounded API polling'],
@@ -893,7 +893,7 @@ LAB_SOFTWARE_DEFS = {
         'commands': ['git', 'python3'],
         'unit': '',
         'unit_scope': 'user',
-        'url': 'http://100.75.120.80:8765/ruview/index.html',
+        'url': 'http://127.0.0.1:8766/ruview/index.html',
         'summary': 'RuView WiFi CSI / presence sensing reference and static UI, staged locally for ESP32-S3/CSI hardware experiments.',
         'needed': ['ESP32-S3/C6 CSI node hardware', 'RuView repo under /home/pi/apps/RuView', 'static UI mirrored under Spac3-Gh0st web/ruview', 'Home Assistant/MQTT integration later'],
         'blocked_actions': ['privacy-invasive sensing without consent', 'claims of real room/vital sensing before hardware CSI validation', 'flashing firmware without explicit approval'],
@@ -1210,8 +1210,11 @@ def lab_software_action(module: str, action: str) -> Dict[str, Any]:
             cp = _run(['docker', 'stop', 'open-webui'], timeout=120)
             state['last_message'] = 'Open WebUI stopped.' if cp.returncode == 0 else f"Open WebUI stop failed: {(cp.stderr or cp.stdout).strip()[:240]}"
         elif module == 'projectnomad':
-            cp = _run(['bash', '-lc', 'cd /home/pi/apps/project-nomad && docker compose -f docker-compose.arm64.yml down'], timeout=240)
+            cp = _run(['systemctl', '--user', 'stop', 'project-nomad.service'], timeout=180)
             state['last_message'] = 'Project N.O.M.A.D containers stopped.' if cp.returncode == 0 else f"Project N.O.M.A.D stop failed: {(cp.stderr or cp.stdout).strip()[:240]}"
+        elif module == 'godseye':
+            cp = _run(['systemctl', '--user', 'stop', 'godseye-live.service'], timeout=90)
+            state['last_message'] = "God's Eye View live server stopped." if cp.returncode == 0 else f"God's Eye View stop failed: {(cp.stderr or cp.stdout).strip()[:240]}"
         elif module == 'portainer':
             cp = _run(['docker', 'stop', 'portainer'], timeout=120)
             state['last_message'] = 'Portainer stopped.' if cp.returncode == 0 else f"Portainer stop failed: {(cp.stderr or cp.stdout).strip()[:240]}"
@@ -1272,6 +1275,12 @@ def lab_software_action(module: str, action: str) -> Dict[str, Any]:
                 state['last_message'] = "Project N.O.M.A.D launch requested. Stack should open at http://100.75.120.80:8080 after containers finish warming up; stop it from the dashboard when done."
             else:
                 state['last_message'] = f"Project N.O.M.A.D start failed: {(cp.stderr or cp.stdout).strip()[:240]}"
+        elif module == 'godseye' and status_before.get('installed'):
+            cp = _run(['systemctl', '--user', 'start', 'godseye-live.service'], timeout=120)
+            if cp.returncode == 0:
+                state['last_message'] = "God's Eye View live server started. Open http://127.0.0.1:8766/godseye-live/; stop it from the dashboard when done to keep the Pi cool."
+            else:
+                state['last_message'] = f"God's Eye View start failed: {(cp.stderr or cp.stdout).strip()[:240]}"
         elif module == 'hermesworkspace' and status_before.get('installed'):
             cp = _run(['systemctl', '--user', 'start', 'hermes-workspace.service'], timeout=120)
             if cp.returncode == 0:

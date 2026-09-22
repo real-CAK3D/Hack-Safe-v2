@@ -27,3 +27,4 @@ credentials*
 *.bak-*
 *.tmp
 .DS_Store
+backups/

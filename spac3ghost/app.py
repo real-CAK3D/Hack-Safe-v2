@@ -18,6 +18,7 @@ from .collectors import active_recon, bluetooth_status, calibrate_tilt_level, fu
 from . import __version__, hostinfo, metrics
 from .config import load_config, save_config
 from .controls import ai_chat_ask, ai_chat_status, camera_status, external_control, external_status, ir_action, launch_proton_gui, service_status, services_status, set_camera_feed, set_vision_enabled, spicy_tool_action, spicy_tools_status, lab_toys_status, companion_firmware_action, flipper_feature_action, lab_gate_action, nfc_rfid_action, safety_boundary_action, lab_software_action, tailscale_ip, tailscale_status, tailscale_up, tailscale_restart, tailscale_protect, toggle_service, toggle_vpn, vpn_status, select_vpn_profile, connect_vpn_profile
+from .cyd import cyd_status, record_heartbeat, telemetry_from_status
 from .personality import Spac3Voice, choose_mood, event_from_status, merged_faces
 from .paths import ROOT, WEB_DIR
 from .plugins import PluginManager
@@ -240,6 +241,7 @@ def _minimal_status(reason='warming'):
         'spicy_tools': {},
         'lab_toys': {},
         'externals': {},
+        'cyd_buddy': cyd_status(),
         'tailscale_url': '',
         'native_plugins': PLUGINS.describe(),
         'plugin_panels': list(LAST_PLUGIN_PANELS),
@@ -277,6 +279,7 @@ def _collect_status_payload():
     status = results.pop('base') if isinstance(results.get('base'), dict) else {'time': int(time.time()), 'error': results.get('base')}
     for key in ('vpn', 'tailscale', 'vision', 'vision_history', 'controls', 'spicy_tools', 'lab_toys', 'externals'):
         status[key] = results.get(key)
+    status['cyd_buddy'] = cyd_status()
     ts_url = os.environ.get('SPAC3GHOST_TAILSCALE_URL') or load_config().get('tailscale', {}).get('url') or ''
     status['tailscale_url'] = ts_url if results.get('tailscale_ip') else ''
     status['collector_latency_ms'] = int((time.time() - started) * 1000)
@@ -387,6 +390,10 @@ class Handler(BaseHTTPRequestHandler):
                 return json_response(self, {'ok': False, 'error': problem}, code=403)
         if path == '/api/status':
             return json_response(self, status_snapshot(wait=False))
+        if path == '/api/cyd/status':
+            return json_response(self, cyd_status())
+        if path == '/api/cyd/telemetry':
+            return json_response(self, telemetry_from_status(status_snapshot(wait=False)))
         if path == '/api/health':
             return json_response(self, health_payload())
         if path == '/api/metrics':
@@ -517,6 +524,11 @@ class Handler(BaseHTTPRequestHandler):
                 return json_response(self, {'ok': True, 'config': config, 'plugins': PLUGINS.describe()})
             except Exception as exc:
                 return json_response(self, {'ok': False, 'error': str(exc)}, code=400)
+        if path == '/api/cyd/heartbeat':
+            result = record_heartbeat(read_json_body(self), self.client_address[0] if self.client_address else '')
+            add_event('cyd', f"CYD Buddy heartbeat from {result.get('buddy', {}).get('ip') or 'unknown'}")
+            _trigger_status_refresh(force=True)
+            return json_response(self, result)
         if path == '/api/vpn/toggle':
             result = toggle_vpn()
             add_event('vpn', result.get('message') or result.get('error') or VOICE.vpn_result(result.get('action', 'toggle')))

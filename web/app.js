@@ -476,6 +476,7 @@ async function refresh(){
     safeRender('Mission Control', ()=>renderMissionControl(s));
     safeRender('Cyber Test Kit', ()=>renderCyberTestKit(s));
     safeRender('AI Chat', ()=>renderAIChat(lastAIChat));
+    safeRender('CYD Buddy', ()=>renderCydBuddy(s.cyd_buddy||{}));
     safeRender('Open Tools', ()=>renderOpenTools(s));
     safeRender('Weather companion', ()=>renderWeatherSim(sens.weather||{}, sens.light||{}));
     safeRender('System', ()=>renderSystem(sys));
@@ -517,6 +518,17 @@ function renderAIChat(chat={}){
   const modelOptions=models.map(m=>`<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
   el.innerHTML=`<div class="ai-status"><b>${escapeHtml(status)}</b><small>${escapeHtml(voice)}</small></div><div id="aiChatHistory" class="ai-chat-history">${hist}</div><div class="ai-chat-controls"><select id="aiModelSelect">${modelOptions||'<option value="">no local model</option>'}</select><textarea id="aiPrompt" rows="3" placeholder="Ask Spac3-Gh0st something about this Pi, the dashboard, Wi‑Fi, sensors, or lab setup..."></textarea><button id="aiAskButton" onclick="askAIChat()">Ask Local AI</button><button onclick="refreshAIChatStatus()">Refresh AI</button></div>`;
 }
+
+function renderCydBuddy(cyd={}){
+  const el=document.getElementById('cydBuddyViz'); if(!el) return;
+  const hs=cyd.hotspot||{};
+  const connected=!!cyd.connected;
+  const age=cyd.age_s==null?'never':`${Math.max(0, Math.round(cyd.age_s))}s ago`;
+  const leases=(cyd.leases||[]).filter(l=>l.active).slice(0,4);
+  const leaseHtml=leases.map(l=>`<div class="cyd-lease"><b>${escapeHtml(l.name||'unnamed')}</b><span>${escapeHtml(l.ip)} // ${escapeHtml(l.mac)}</span></div>`).join('') || '<div class="scanline-note">No CYD DHCP lease yet. Connect it to Wu-Tang LAN from the Windows-flashed firmware.</div>';
+  const sample=`GET ${cyd.telemetry_url||'http://10.42.7.1:8766/api/cyd/telemetry'}\nPOST ${cyd.heartbeat_url||'http://10.42.7.1:8766/api/cyd/heartbeat'}\n{\"name\":\"CYD Buddy\",\"firmware\":\"desk-buddy\",\"face\":\"(@-@)\",\"mood\":\"curious\"}`;
+  el.innerHTML=`<div class="cyd-dock ${connected?'connected':'waiting'}"><div class="cyd-face">${escapeHtml(cyd.face||lastStatus?.mood?.face||'(@-@)')}</div><div class="cyd-core"><b>${escapeHtml(cyd.dock_label||'HOTSPOT CHECK')}</b><span>${escapeHtml(cyd.name||'CYD Buddy')} // ${connected?'connected':'waiting'} // last seen ${age}</span><small>hotspot ${escapeHtml(hs.ssid||'Wu-Tang LAN')} @ ${escapeHtml(hs.ip||'10.42.7.1')} // ${hs.active?'active on '+escapeHtml(hs.device||'wlan1'):'not active'}</small></div></div><div class="cyd-grid">${metricCell('CYD IP', cyd.ip||'waiting', connected?'dock online':'DHCP/heartbeat pending')}${metricCell('Mood', cyd.mood||lastStatus?.mood?.name||'n/a', 'later: mirror same face on CYD screen')}${metricCell('Telemetry', cyd.telemetry_url||'n/a', 'CYD polls this')}${metricCell('Dashboard', cyd.dashboard_url||'n/a', 'same Spac3-Gh0st over hotspot')}</div><div class="cyd-leases">${leaseHtml}</div><pre class="cyd-endpoints">${escapeHtml(sample)}</pre>`;
+}
 async function askAIChat(){
   const prompt=document.getElementById('aiPrompt')?.value||'';
   const model=document.getElementById('aiModelSelect')?.value||'';
@@ -552,6 +564,7 @@ function renderOpenTools(s={}){
     osirisosint:{label:'OSIRIS AI Live',url:'https://www.osirisai.live/?layers=maritime,cctv,cctv_previews,live_news,earthquakes,global_incidents,day_night,cables,sdk_sea,sdk_air,sdk_naval',running:true,home:'Vision + OSINT Globe'},
     leolabsleo:{label:'LeoLabs LEO Visualization',url:'https://platform.leolabs.space/visualizations/leo',running:true,home:'Space / LEO Tracking'},
     ruview:{label:'RuView WiFi Sensing',url:'/ruview/index.html',running:true,home:'Local mirror'},
+    godseye:{label:"God's Eye View",url:'http://127.0.0.1:8766/godseye-live/',running:false,home:'Vision + OSINT Globe'},
     hermesworkspace:{label:'Hermes Workspace',url:'http://100.75.120.80:3000',running:true,home:'Hermes'},
     projectnomad:{label:'Project N.O.M.A.D',url:'http://100.75.120.80:8080',running:true,home:'Field Kit'},
     uptimekuma:{label:'Uptime Kuma',url:'http://100.75.120.80:3001',running:true,home:'Monitoring'},
@@ -563,8 +576,8 @@ function renderOpenTools(s={}){
     syncthing:{label:'Syncthing',url:'http://100.75.120.80:8384',running:true,home:'Sync'}
   };
   // Keep global/space situational-awareness links on the first-screen launcher too.
-  const order=['osirisosint','leolabsleo','ruview','hermesworkspace','projectnomad','openwebui','portainer','uptimekuma','docker','ollama','jellyfin','syncthing'];
-  const card=id=>{ const m=byId[id]||fallback[id]||{}; const url=m.url||''; const state=m.running?'running':(m.installed?'installed/stopped':'not installed'); const onDemand=['hermesworkspace','projectnomad','openwebui','portainer']; const action=url?`<div class="open-tool-actions">${m.running?`<a class="button-link open-now" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open</a>${onDemand.includes(id)?`<button onclick="labSoftwareAction('${id}','disable')">Stop</button>`:''}`:(m.installed&&onDemand.includes(id)?`<button onclick="labSoftwareAction('${id}','open')">Start / Open</button>`:'')}</div>`:`<button onclick="showTab('lab'); setTimeout(()=>document.querySelector('.lab-software-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)">Docker Status</button>`; return `<div class="open-tool ${m.running?'running':''} ${url?'openable':'status-only'}"><b>${escapeHtml(m.label||id)}</b><span>${escapeHtml(m.home||'Local tool')} // ${escapeHtml(state)}</span>${action}<small>${url?escapeHtml(url):'Docker is managed from Lab → Launch Bay; Portainer gives the Docker UI.'}</small></div>`; };
+  const order=['osirisosint','leolabsleo','ruview','godseye','hermesworkspace','projectnomad','openwebui','portainer','uptimekuma','docker','ollama','jellyfin','syncthing'];
+  const card=id=>{ const m=byId[id]||fallback[id]||{}; const url=m.url||''; const state=m.running?'running':(m.installed?'installed/stopped':'not installed'); const onDemand=['godseye','hermesworkspace','projectnomad','openwebui','portainer']; const action=url?`<div class="open-tool-actions">${m.running?`<a class="button-link open-now" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open</a>${onDemand.includes(id)?`<button onclick="labSoftwareAction('${id}','disable')">Stop</button>`:''}`:(m.installed&&onDemand.includes(id)?`<button onclick="labSoftwareAction('${id}','open')">Start / Open</button>`:'')}</div>`:`<button onclick="showTab('lab'); setTimeout(()=>document.querySelector('.lab-software-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)">Docker Status</button>`; return `<div class="open-tool ${m.running?'running':''} ${url?'openable':'status-only'}"><b>${escapeHtml(m.label||id)}</b><span>${escapeHtml(m.home||'Local tool')} // ${escapeHtml(state)}</span>${action}<small>${url?escapeHtml(url):'Docker is managed from Lab → Launch Bay; Portainer gives the Docker UI.'}</small></div>`; };
   el.innerHTML=order.map(card).join('');
 }
 
@@ -738,7 +751,7 @@ function renderLabSoftware(sw={}){
     const needed=(m.needed||[]).map(x=>`<li>${escapeHtml(x)}</li>`).join('');
     const blocked=(m.blocked_actions||[]).map(x=>`<li>${escapeHtml(x)}</li>`).join('');
     const cmd=(m.commands||[]).join(', ') || `missing: ${(m.missing_commands||[]).join(', ')||'n/a'}`;
-    const onDemand=['hermesworkspace','projectnomad','openwebui','portainer'];
+    const onDemand=['godseye','hermesworkspace','projectnomad','openwebui','portainer'];
     const openUi=(m.url&&m.running)?`<a class="lab-link open-ui" href="${escapeHtml(m.url)}" target="_blank" rel="noopener noreferrer">Open UI</a>`:'';
     const stopStart=onDemand.includes(m.id)?`<button onclick="labSoftwareAction('${m.id}', '${m.running?'disable':'open'}')">${m.running?'Stop Service':'Start Service'}</button>`:`<button onclick="labSoftwareAction('${m.id}', '${m.enabled?'disable':'enable'}')">${m.enabled?'Disable':'Enable / Stage'}</button>`;
     const canClone=['securitylab','ruview','cyberradar','payloadsallthethings','hacktricks','seclists','awesomehacking','awesomebugbounty','hackingtool'].includes(m.id) && !m.installed;

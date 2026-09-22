@@ -40,6 +40,7 @@
         <section class="card mission-card"><h2>Mission Control</h2><div class="local-controls mission-controls"><button id="vpnButton" onclick="toggleVpn()">VPN</button><button id="protonFxButton" onclick="toggleProtonFx()">Hack-Safe VPN FX</button><button id="soundButton" onclick="toggleSound()">Sound Off</button><button onclick="refresh()">Refresh</button></div><div id="missionViz" class="viz-stack"></div></section>
         <section class="card stat-card cyber-kit-card"><h2>Pwnagotchi-on-Steroids Kit</h2><p class="mini">Home cyber test kit controls: scans, hardware reads, and gated owned-lab workflows.</p><div id="cyberKitViz" class="cyber-kit-grid">Loading cyber kit...</div></section>
         <section class="card stat-card ai-chat-card"><h2>Ask Spac3-Gh0st AI</h2><p class="mini">Local Ollama text chat. Whisper speech-to-text and TTS stay storage-aware until installed.</p><div id="aiChatViz" class="ai-chat-viz">Checking local AI...</div></section>
+        <section class="card stat-card cyd-buddy-card"><h2>CYD Buddy Dock</h2><p class="mini">Desk-buddy dock over Wu-Tang LAN. USB can be power-only; telemetry rides over Wi-Fi.</p><div id="cydBuddyViz" class="cyd-buddy-viz">Waiting for CYD Buddy...</div></section>
         <section class="card stat-card open-tools-card"><h2>Open Tools</h2><p class="mini">Quick launch spots for the local UIs you keep asking for.</p><div id="openToolsViz" class="open-tools-grid">Loading launch links...</div></section>
         <section class="card events dashboard-events"><h2>Activity Feed</h2><div id="events"></div></section>
       </section>
@@ -228,7 +229,7 @@ Plugin switches write to config.plugins and reload the dashboard backend.</pre>
       <div id="bottomTickerText" class="ticker-track">BOOTING CPU // RAM // DISK // WIFI // GPS //</div>
     </div>
   </div>
-  <script src="/app.js?v=2.0.1"></script>
+  <script src="/app.js?v=20260921-open-tools-toggles"></script>
   <script src="/v2.js?v=2.0.1"></script>
   <script src="/weatherfx.js?v=2.0.1"></script>
   <script src="/deck.js?v=2.2.0"></script>
