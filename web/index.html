@@ -40,7 +40,6 @@
         <section class="card mission-card"><h2>Mission Control</h2><div class="local-controls mission-controls"><button id="vpnButton" onclick="toggleVpn()">VPN</button><button id="protonFxButton" onclick="toggleProtonFx()">Hack-Safe VPN FX</button><button id="soundButton" onclick="toggleSound()">Sound Off</button><button onclick="refresh()">Refresh</button></div><div id="missionViz" class="viz-stack"></div></section>
         <section class="card stat-card cyber-kit-card"><h2>Pwnagotchi-on-Steroids Kit</h2><p class="mini">Home cyber test kit controls: scans, hardware reads, and gated owned-lab workflows.</p><div id="cyberKitViz" class="cyber-kit-grid">Loading cyber kit...</div></section>
         <section class="card stat-card ai-chat-card"><h2>Ask Spac3-Gh0st AI</h2><p class="mini">Local Ollama text chat. Whisper speech-to-text and TTS stay storage-aware until installed.</p><div id="aiChatViz" class="ai-chat-viz">Checking local AI...</div></section>
-        <section class="card stat-card cyd-buddy-card"><h2>CYD Buddy Dock</h2><p class="mini">Desk-buddy dock over Wu-Tang LAN. USB can be power-only; telemetry rides over Wi-Fi.</p><div id="cydBuddyViz" class="cyd-buddy-viz">Waiting for CYD Buddy...</div></section>
         <section class="card stat-card open-tools-card"><h2>Open Tools</h2><p class="mini">Quick launch spots for the local UIs you keep asking for.</p><div id="openToolsViz" class="open-tools-grid">Loading launch links...</div></section>
         <section class="card events dashboard-events"><h2>Activity Feed</h2><div id="events"></div></section>
       </section>
@@ -63,11 +62,11 @@
         <section class="card stat-card household-signals-card"><h2>Household Signals</h2><p class="mini">Correlates LAN, Wi‑Fi, Bluetooth, Pis, cameras, and Home Assistant labels so strangers stand out.</p><div id="householdSignalsViz" class="household-signals-viz">Mapping household signals...</div></section>
         <section class="card stat-card wifi-card"><h2>Wi-Fi</h2><div class="local-controls"><button onclick="scan('wifi')">Wi-Fi Scan</button><button id="wifiVaultButton" onclick="loadWifiVault()">Wi-Fi Vault</button></div><div id="wifiViz" class="viz-stack"></div><pre id="wifi"></pre></section>
         <section class="card stat-card wifi-vault-card"><h2>Known Networks</h2><div id="wifiVaultViz" class="viz-stack"><div class="scanline-note">Hit Wi-Fi Vault to load saved profiles. Passwords stay hidden until you flip the reveal switch.</div></div></section>
-        <section class="card stat-card rf-card"><h2>RF Audit</h2><div id="rfAuditViz" class="viz-stack"></div></section>
         <section class="card stat-card meshtastic-card"><h2>Meshtastic Gateway</h2><p class="mini">Upstairs LoRa gateway staging. Read-only until the ThinkNode is plugged into Hack-Safe.</p><div id="meshtasticViz" class="mesh-viz">Waiting for mesh gateway...</div></section>
-        <section class="card stat-card global-map-card"><h2>Global Map</h2><div id="globalMapViz" class="global-map-viz"></div></section>
+        <section class="card stat-card rf-card"><h2>RF Audit</h2><div id="rfAuditViz" class="viz-stack"></div></section>
         <section class="card stat-card defense-card"><h2>Defensive Ops</h2><div id="defenseOpsViz" class="viz-stack"></div></section>
         <section class="card stat-card sensor-card"><h2>GPS + Sensors</h2><div class="local-controls"><button onclick="fetch('/api/sensors/refresh').then(refresh)">Refresh Sensors</button><button onclick="calibrateTiltLevel()">Set Current Tilt as Level</button></div><div id="sensorViz" class="viz-stack"></div><pre id="sensors"></pre></section>
+        <section class="card stat-card global-map-card"><h2>Global Map</h2><div id="globalMapViz" class="global-map-viz"></div></section>
       </section>
 
       <section id="tab-lab" class="tab-panel page lab-layout">
@@ -127,6 +126,7 @@
 
       <section id="tab-externals" class="tab-panel page externals-page vision-layout">
         <section class="card page-hero"><h2>Externals</h2><p class="mini">Vision, camera feeds, God's Eye, and external Pi/car nodes live together here.</p></section>
+        <section class="card stat-card cyd-buddy-card"><h2>CYD Buddy Dock</h2><p class="mini">Desk-buddy dock over Wu-Tang LAN. Telemetry is event-driven; phrases stay on the Buddy.</p><div id="cydBuddyViz" class="cyd-buddy-viz">Waiting for CYD Buddy...</div></section>
         <section class="card vision-card">
           <h2>Camera Feed</h2>
           <div class="camera-frame-wrap">

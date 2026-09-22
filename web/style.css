@@ -908,6 +908,7 @@ button.is-error { color:var(--red); border-color:var(--red); }
 .settings-plugin-switchboard, .settings-plugins-card { grid-column:1 / -1; }
 .externals-page.vision-layout { grid-template-columns:1.4fr 1fr; }
 .externals-page.vision-layout .page-hero { grid-column:1 / -1; }
+.externals-page.vision-layout .cyd-buddy-card { grid-column:1 / -1; }
 @media (max-width:1180px){ .systems-page { grid-template-columns:repeat(2,minmax(0,1fr)); } .systems-page .system-monitor-card, .systems-page .global-map-card, .systems-page .defense-card, .systems-page .sensor-card { grid-column:1 / -1; } }
 @media (max-width:900px){ .systems-page, .externals-page.vision-layout { grid-template-columns:minmax(0,1fr) !important; } .systems-page > .card, .externals-page.vision-layout > .card { grid-column:1 / -1 !important; } }
 
@@ -1034,7 +1035,7 @@ button.is-error { color:var(--red); border-color:var(--red); }
 #tab-signals.signals-page { grid-template-columns:repeat(12,minmax(0,1fr)); }
 #tab-signals .page-hero { grid-column:1 / -1; }
 #tab-signals .hacker-card, #tab-signals .known-devices-card, #tab-signals .household-signals-card { grid-column:span 4; min-height:260px; max-height:none; }
-#tab-signals .wifi-card, #tab-signals .wifi-vault-card, #tab-signals .rf-card { grid-column:span 4; }
+#tab-signals .wifi-card, #tab-signals .wifi-vault-card, #tab-signals .meshtastic-card, #tab-signals .rf-card { grid-column:span 4; }
 #tab-signals .global-map-card { grid-column:1 / -1; min-height:470px; }
 #tab-signals .global-map-viz, #tab-signals .world-map { min-height:430px; }
 #tab-signals .defense-card, #tab-signals .sensor-card { grid-column:span 6; min-height:310px; }
@@ -1052,7 +1053,7 @@ button.is-error { color:var(--red); border-color:var(--red); }
 
 @media (max-width:1180px){
   #tab-signals .hacker-card, #tab-signals .known-devices-card, #tab-signals .household-signals-card,
-  #tab-signals .wifi-card, #tab-signals .wifi-vault-card, #tab-signals .rf-card,
+  #tab-signals .wifi-card, #tab-signals .wifi-vault-card, #tab-signals .meshtastic-card, #tab-signals .rf-card,
   #tab-signals .defense-card, #tab-signals .sensor-card { grid-column:1 / -1; }
   #tab-systems .monitor-hero { grid-template-columns:repeat(2,minmax(0,1fr)); }
   #tab-systems .monitor-grid { grid-template-columns:minmax(0,1fr); }
