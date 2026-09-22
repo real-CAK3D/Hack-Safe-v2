@@ -526,8 +526,24 @@ function renderCydBuddy(cyd={}){
   const age=cyd.age_s==null?'never':`${Math.max(0, Math.round(cyd.age_s))}s ago`;
   const leases=(cyd.leases||[]).filter(l=>l.active).slice(0,4);
   const leaseHtml=leases.map(l=>`<div class="cyd-lease"><b>${escapeHtml(l.name||'unnamed')}</b><span>${escapeHtml(l.ip)} // ${escapeHtml(l.mac)}</span></div>`).join('') || '<div class="scanline-note">No CYD DHCP lease yet. Connect it to Wu-Tang LAN from the Windows-flashed firmware.</div>';
-  const sample=`GET ${cyd.telemetry_url||'http://10.42.7.1:8766/api/cyd/telemetry'}\nPOST ${cyd.heartbeat_url||'http://10.42.7.1:8766/api/cyd/heartbeat'}\n{\"name\":\"CYD Buddy\",\"firmware\":\"desk-buddy\",\"face\":\"(@-@)\",\"mood\":\"curious\"}`;
-  el.innerHTML=`<div class="cyd-dock ${connected?'connected':'waiting'}"><div class="cyd-face">${escapeHtml(cyd.face||lastStatus?.mood?.face||'(@-@)')}</div><div class="cyd-core"><b>${escapeHtml(cyd.dock_label||'HOTSPOT CHECK')}</b><span>${escapeHtml(cyd.name||'CYD Buddy')} // ${connected?'connected':'waiting'} // last seen ${age}</span><small>hotspot ${escapeHtml(hs.ssid||'Wu-Tang LAN')} @ ${escapeHtml(hs.ip||'10.42.7.1')} // ${hs.active?'active on '+escapeHtml(hs.device||'wlan1'):'not active'}</small></div></div><div class="cyd-grid">${metricCell('CYD IP', cyd.ip||'waiting', connected?'dock online':'DHCP/heartbeat pending')}${metricCell('Mood', cyd.mood||lastStatus?.mood?.name||'n/a', 'later: mirror same face on CYD screen')}${metricCell('Telemetry', cyd.telemetry_url||'n/a', 'CYD polls this')}${metricCell('Dashboard', cyd.dashboard_url||'n/a', 'same Spac3-Gh0st over hotspot')}</div><div class="cyd-leases">${leaseHtml}</div><pre class="cyd-endpoints">${escapeHtml(sample)}</pre>`;
+  const dock=`<div class="cyd-dock ${connected?'connected':'waiting'}"><div class="cyd-face">${escapeHtml(cyd.face||lastStatus?.mood?.face||'(@-@)')}</div><div class="cyd-core"><b>${escapeHtml(cyd.dock_label||'HOTSPOT CHECK')}</b><span>${escapeHtml(cyd.name||'CYD Buddy')} // ${connected?'connected':'waiting'} // last seen ${age}</span><small>hotspot ${escapeHtml(hs.ssid||'Wu-Tang LAN')} @ ${escapeHtml(hs.ip||'10.42.7.1')} // ${hs.active?'active on '+escapeHtml(hs.device||'wlan1'):'not active'}</small></div></div>`;
+  if(!connected){
+    el.innerHTML=`${dock}<div class="cyd-grid">${metricCell('CYD IP', cyd.ip||'waiting', 'DHCP/heartbeat pending')}${metricCell('Telemetry', cyd.telemetry_url||'n/a', 'CYD polls this')}${metricCell('Dashboard', cyd.dashboard_url||'n/a', 'same Spac3-Gh0st over hotspot')}</div><div class="cyd-leases">${leaseHtml}</div><div class="scanline-note">Expanded Buddy stats stay hidden until CYD Buddy is connected and sending heartbeats.</div>`;
+    return;
+  }
+  const stats=cyd.stats||{}, inter=cyd.interactions||{}, learn=cyd.learning||{}, mem=cyd.memory||{}, phrases=cyd.phrases||{}, life=cyd.lifecycle||{}, ai=cyd.ai_state||{};
+  const memories=(mem.bank||[]).slice(-5).map(x=>`<li>${escapeHtml(x)}</li>`).join('') || '<li>No memory bank entries yet.</li>';
+  const statGrid=[
+    metricCell('Health', stats.health||'n/a', `hunger ${stats.hunger??'n/a'} // play ${stats.play_need??'n/a'}`),
+    metricCell('Mood', cyd.mood||'n/a', ai.asleep?'sleeping':'awake'),
+    metricCell('Care', `R${stats.restless??'n/a'} A${stats.anxious??'n/a'}`, `${stats.feeds_today??0} feeds // ${stats.plays_today??0} plays`),
+    metricCell('Power', `STR ${stats.strength??'n/a'} / ARM ${stats.armor??'n/a'}`, `${inter.new_wifi??0} WiFi // ${inter.new_bluetooth??0} BT`),
+    metricCell('Learning', `${learn.preference_learns??0} learns`, `${learn.memory_revisions??0} memory revisions`),
+    metricCell('Favorite', learn.favorite_activity||'n/a', `${learn.favorite_time||'time n/a'} // ${learn.favorite_season||'season n/a'}`),
+    metricCell('Alive', life.alive||'n/a', `${life.deaths??0} deaths // session ${life.session||'n/a'}`),
+    metricCell('AI', `${ai.mode||'tiny-local'} ${ai.confidence??0}%`, ai.auto_mode?'auto mode':'manual mode')
+  ].join('');
+  el.innerHTML=`${dock}<div class="cyd-grid">${statGrid}</div><div class="cyd-buddy-panels"><section><h3>Current Voice</h3><p>${escapeHtml(phrases.current||cyd.message||'quiet')}</p><small>${escapeHtml(phrases.personality||'personality n/a')} // scroll ${escapeHtml(phrases.scroll_ms??'n/a')}ms // SD phrases ${phrases.sd_lookup?'on':'off'}</small></section><section><h3>Tiny AI Insight</h3><p>${escapeHtml(ai.insight||learn.summary||'learning state pending')}</p><small>${escapeHtml(ai.daily_summary||'daily summary pending')}</small></section><section><h3>Memory Bank</h3><ul>${memories}</ul><small>${escapeHtml(mem.random||'')}</small></section></div><div class="cyd-leases">${leaseHtml}</div>`;
 }
 async function askAIChat(){
   const prompt=document.getElementById('aiPrompt')?.value||'';

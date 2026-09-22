@@ -98,6 +98,7 @@ def _leases() -> list[Dict[str, Any]]:
 def record_heartbeat(payload: Dict[str, Any], client_ip: str = '') -> Dict[str, Any]:
     state = _read_json(STATE_PATH, {}) if isinstance(_read_json(STATE_PATH, {}), dict) else {}
     now = _now()
+    raw = {k: v for k, v in payload.items() if k not in {'ip'}}
     buddy = {
         'last_seen': now,
         'ip': client_ip or payload.get('ip') or state.get('ip') or '',
@@ -107,7 +108,14 @@ def record_heartbeat(payload: Dict[str, Any], client_ip: str = '') -> Dict[str, 
         'mood': str(payload.get('mood') or state.get('mood') or ''),
         'battery': payload.get('battery', state.get('battery')),
         'message': str(payload.get('message') or state.get('message') or ''),
-        'raw': {k: v for k, v in payload.items() if k not in {'ip'}},
+        'stats': payload.get('stats') or state.get('stats') or {},
+        'interactions': payload.get('interactions') or state.get('interactions') or {},
+        'learning': payload.get('learning') or state.get('learning') or {},
+        'memory': payload.get('memory') or state.get('memory') or {},
+        'phrases': payload.get('phrases') or state.get('phrases') or {},
+        'lifecycle': payload.get('lifecycle') or state.get('lifecycle') or {},
+        'ai_state': payload.get('ai_state') or state.get('ai_state') or {},
+        'raw': raw,
     }
     _write_json(STATE_PATH, buddy)
     return {'ok': True, 'buddy': buddy}
@@ -138,6 +146,13 @@ def cyd_status() -> Dict[str, Any]:
         'mood': state.get('mood') or '',
         'battery': state.get('battery'),
         'message': state.get('message') or '',
+        'stats': state.get('stats') or {},
+        'interactions': state.get('interactions') or {},
+        'learning': state.get('learning') or {},
+        'memory': state.get('memory') or {},
+        'phrases': state.get('phrases') or {},
+        'lifecycle': state.get('lifecycle') or {},
+        'ai_state': state.get('ai_state') or {},
         'hotspot': conn,
         'leases': leases,
         'telemetry_url': f'http://{HOTSPOT_IP}:8766{TELEMETRY_PATH}',

@@ -354,9 +354,14 @@ body.v2-compact .v2-tile .val { font-size: 19px; }
 .cyd-core b { color: var(--text); letter-spacing: 1.2px; }
 .cyd-core span, .cyd-core small { color: var(--dim); overflow-wrap: anywhere; }
 .cyd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.cyd-buddy-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
+.cyd-buddy-panels section { border: 1px solid var(--v2-line); border-radius: var(--v2-radius-sm); background: #ffffff06; padding: 10px; min-width: 0; }
+.cyd-buddy-panels h3 { margin: 0 0 6px; color: var(--green); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+.cyd-buddy-panels p { margin: 0 0 6px; color: var(--text); overflow-wrap: anywhere; }
+.cyd-buddy-panels small, .cyd-buddy-panels li { color: var(--dim); overflow-wrap: anywhere; }
+.cyd-buddy-panels ul { margin: 0 0 6px; padding-left: 18px; }
 .cyd-leases { display: grid; gap: 6px; }
 .cyd-lease { display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--v2-line); border-radius: 9px; background: #ffffff06; }
 .cyd-lease span { color: var(--dim); font-family: var(--v2-mono); font-size: 11px; }
 .cyd-endpoints { user-select: text; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 140px; overflow: auto; }
 @media (max-width: 760px) { .cyd-dock { grid-template-columns: 1fr; text-align: center; } .cyd-lease { display: grid; } }
-
