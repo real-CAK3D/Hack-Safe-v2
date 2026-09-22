@@ -10,6 +10,7 @@ from typing import Any, Dict
 from .paths import DATA_DIR
 
 STATE_PATH = DATA_DIR / 'cyd_buddy.json'
+SETTINGS_PATH = DATA_DIR / 'cyd_buddy_settings.json'
 LEASE_PATHS = (
     Path('/var/lib/NetworkManager/dnsmasq-wlan1.leases'),
     Path('/var/lib/NetworkManager/dnsmasq-Wu-Tang LAN.leases'),
@@ -19,6 +20,27 @@ SSID = 'Wu-Tang LAN'
 HOTSPOT_IP = '10.42.7.1'
 TELEMETRY_PATH = '/api/cyd/telemetry'
 HEARTBEAT_PATH = '/api/cyd/heartbeat'
+
+MENU_DEFS = [
+    {'id': 'home', 'label': 'Home Face', 'hint': 'Return Buddy to the normal face / dock screen.'},
+    {'id': 'display', 'label': 'Display', 'hint': 'Brightness, sleep, and visual comfort.'},
+    {'id': 'face', 'label': 'Face / Mood', 'hint': 'Face style, mood, and personality panel.'},
+    {'id': 'phrases', 'label': 'Voice / Phrases', 'hint': 'Phrase pack, scroll speed, and current voice line.'},
+    {'id': 'wifi', 'label': 'Wi-Fi / Dock', 'hint': 'Dock network, heartbeat, and hotspot details.'},
+    {'id': 'memory', 'label': 'Memory / Learning', 'hint': 'Learning state, favorite things, and memory bank.'},
+    {'id': 'firmware', 'label': 'Firmware / Status', 'hint': 'Firmware version, uptime, logs, and diagnostics.'},
+    {'id': 'advanced', 'label': 'Advanced', 'hint': 'Careful diagnostics only; no secrets are shown.'},
+]
+MENU_IDS = {m['id'] for m in MENU_DEFS}
+DEFAULT_SETTINGS = {
+    'active_menu': 'home',
+    'display': {'brightness': 70, 'sleep_s': 60, 'theme': 'matrix'},
+    'face': {'mood': 'auto', 'animation': 'auto', 'personality': 'chill'},
+    'phrases': {'scroll_ms': 80, 'sd_lookup': False},
+    'advanced': {'diagnostics': False},
+    'pending_command': None,
+    'updated_at': 0,
+}
 
 EVENT_PHRASES = {
     'wifi_new': [
@@ -91,6 +113,100 @@ def _write_json(path: Path, payload: Any) -> None:
     tmp.replace(path)
 
 
+def _deep_merge(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(base)
+    for key, value in (updates or {}).items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = _deep_merge(out[key], value)
+        else:
+            out[key] = value
+    return out
+
+
+def _clamp_int(value: Any, low: int, high: int, default: int) -> int:
+    try:
+        return max(low, min(high, int(value)))
+    except Exception:
+        return default
+
+
+def _settings_state() -> Dict[str, Any]:
+    saved = _read_json(SETTINGS_PATH, {})
+    if not isinstance(saved, dict):
+        saved = {}
+    merged = _deep_merge(DEFAULT_SETTINGS, saved)
+    active = str(merged.get('active_menu') or 'home')
+    if active not in MENU_IDS:
+        active = 'home'
+    merged['active_menu'] = active
+    merged['menus'] = MENU_DEFS
+    return merged
+
+
+def _save_settings(state: Dict[str, Any]) -> Dict[str, Any]:
+    persisted = {k: v for k, v in state.items() if k != 'menus'}
+    persisted['updated_at'] = _now()
+    _write_json(SETTINGS_PATH, persisted)
+    return _settings_state()
+
+
+def cyd_settings() -> Dict[str, Any]:
+    status = cyd_status(include_settings=False)
+    settings = _settings_state()
+    settings['ok'] = True
+    settings['connected'] = bool(status.get('connected'))
+    settings['buddy'] = {k: status.get(k) for k in ('name', 'ip', 'firmware', 'dock_label', 'heartbeat_recent')}
+    return settings
+
+
+def update_cyd_settings(payload: Dict[str, Any]) -> Dict[str, Any]:
+    payload = payload or {}
+    status = cyd_status(include_settings=False)
+    if not status.get('connected'):
+        return {'ok': False, 'error': 'CYD Buddy is not docked/connected; settings command not sent.', 'connected': False}
+    state = _settings_state()
+    action = str(payload.get('action') or 'open_menu').strip().lower()
+    menu = str(payload.get('menu') or state.get('active_menu') or 'home').strip().lower()
+    if menu not in MENU_IDS:
+        return {'ok': False, 'error': f'unknown CYD menu: {menu}', 'menus': MENU_DEFS}
+    values = payload.get('values') if isinstance(payload.get('values'), dict) else {}
+    if action in ('open_menu', 'menu'):
+        state['active_menu'] = menu
+    elif action in ('save', 'settings'):
+        display = values.get('display') if isinstance(values.get('display'), dict) else {}
+        face = values.get('face') if isinstance(values.get('face'), dict) else {}
+        phrases = values.get('phrases') if isinstance(values.get('phrases'), dict) else {}
+        advanced = values.get('advanced') if isinstance(values.get('advanced'), dict) else {}
+        state['display'] = {
+            'brightness': _clamp_int(display.get('brightness'), 5, 100, state.get('display', {}).get('brightness', 70)),
+            'sleep_s': _clamp_int(display.get('sleep_s'), 0, 3600, state.get('display', {}).get('sleep_s', 60)),
+            'theme': str(display.get('theme') or state.get('display', {}).get('theme') or 'matrix')[:32],
+        }
+        state['face'] = {
+            'mood': str(face.get('mood') or state.get('face', {}).get('mood') or 'auto')[:32],
+            'animation': str(face.get('animation') or state.get('face', {}).get('animation') or 'auto')[:32],
+            'personality': str(face.get('personality') or state.get('face', {}).get('personality') or 'chill')[:32],
+        }
+        state['phrases'] = {
+            'scroll_ms': _clamp_int(phrases.get('scroll_ms'), 20, 500, state.get('phrases', {}).get('scroll_ms', 80)),
+            'sd_lookup': bool(phrases.get('sd_lookup', state.get('phrases', {}).get('sd_lookup', False))),
+        }
+        state['advanced'] = {'diagnostics': bool(advanced.get('diagnostics', state.get('advanced', {}).get('diagnostics', False)))}
+    else:
+        return {'ok': False, 'error': f'unsupported CYD settings action: {action}'}
+    state['pending_command'] = {
+        'id': f'cyd-{_now()}',
+        'action': action,
+        'menu': menu,
+        'values': values if action in ('save', 'settings') else {},
+        'created_at': _now(),
+    }
+    saved = _save_settings(state)
+    saved['ok'] = True
+    saved['connected'] = True
+    return saved
+
+
 def _event_phrase(kind: str, seed: int = 0) -> str:
     choices = EVENT_PHRASES.get(kind) or []
     if not choices:
@@ -156,6 +272,22 @@ def _connection_state() -> Dict[str, Any]:
     return {'ssid': SSID, 'ip': HOTSPOT_IP, 'active': active, 'device': device or ('wlan1' if active else ''), 'wlan1_state': wlan1_state}
 
 
+def _buddy_reachable(ip: str) -> bool:
+    ip = str(ip or '').strip()
+    if not ip.startswith('10.42.7.'):
+        return False
+    neigh = _run(['ip', 'neigh', 'show', ip], timeout=1.0).lower()
+    if any(state in neigh for state in ('reachable', 'stale', 'delay', 'probe')):
+        return True
+    # Last-ditch bounded ping: only for the known CYD hotspot subnet, so a docked
+    # Buddy can still expose controls even if its firmware heartbeat is stale.
+    try:
+        cp = subprocess.run(['ping', '-c', '1', '-W', '1', ip], text=True, capture_output=True, timeout=2)
+        return cp.returncode == 0
+    except Exception:
+        return False
+
+
 def _leases() -> list[Dict[str, Any]]:
     rows: list[Dict[str, Any]] = []
     seen = set()
@@ -205,10 +337,15 @@ def record_heartbeat(payload: Dict[str, Any], client_ip: str = '') -> Dict[str, 
         'raw': raw,
     }
     _write_json(STATE_PATH, buddy)
-    return {'ok': True, 'buddy': buddy}
+    if payload.get('settings_ack') or payload.get('command_ack'):
+        settings = _settings_state()
+        settings['last_ack'] = payload.get('settings_ack') or payload.get('command_ack')
+        settings['pending_command'] = None
+        _save_settings(settings)
+    return {'ok': True, 'buddy': buddy, 'settings': _settings_state()}
 
 
-def cyd_status() -> Dict[str, Any]:
+def cyd_status(include_settings: bool = True) -> Dict[str, Any]:
     state = _read_json(STATE_PATH, {})
     if not isinstance(state, dict):
         state = {}
@@ -216,14 +353,17 @@ def cyd_status() -> Dict[str, Any]:
     now = _now()
     recent = bool(state.get('last_seen') and now - int(state.get('last_seen') or 0) <= 45)
     active_leases = [l for l in leases if l.get('active')]
-    connected = recent or bool(active_leases)
     ip = state.get('ip') or (active_leases[0].get('ip') if active_leases else '')
+    reachable = _buddy_reachable(ip)
+    connected = recent or bool(active_leases) or reachable
     name = state.get('name') or (active_leases[0].get('name') if active_leases else '') or 'CYD Buddy'
     conn = _connection_state()
-    return {
+    settings = _settings_state() if include_settings else None
+    payload = {
         'enabled': True,
         'connected': connected,
         'heartbeat_recent': recent,
+        'reachable': reachable,
         'name': name,
         'ip': ip,
         'last_seen': state.get('last_seen'),
@@ -247,6 +387,9 @@ def cyd_status() -> Dict[str, Any]:
         'dashboard_url': f'http://{HOTSPOT_IP}:8766/',
         'dock_label': 'DOCKED' if connected else ('HOTSPOT READY' if conn.get('active') else 'HOTSPOT OFF'),
     }
+    if include_settings:
+        payload['settings'] = settings
+    return payload
 
 
 def telemetry_from_status(status: Dict[str, Any]) -> Dict[str, Any]:
@@ -262,6 +405,7 @@ def telemetry_from_status(status: Dict[str, Any]) -> Dict[str, Any]:
         'time': _now(),
         'host': host,
         'buddy': cyd,
+        'settings': cyd.get('settings') or _settings_state(),
         'mood': str(mood.get('name') or 'curious').lower(),
         'face': str(mood.get('face') or '(@-@)'),
         'color': mood.get('color') or '#38ff9c',

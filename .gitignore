@@ -28,3 +28,4 @@ credentials*
 *.tmp
 .DS_Store
 backups/
+.hermes-backups/

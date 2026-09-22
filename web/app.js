@@ -1,6 +1,7 @@
 let currentConfig = null;
 let lastStatus = null;
 let lastAIChat = null;
+let cydBuddyActionStatus = '';
 let busyButtons = new Set();
 let cameraTimer = null;
 let cameraEnabled = null;
@@ -544,7 +545,34 @@ function renderCydBuddy(cyd={}){
     metricCell('Alive', life.alive||'n/a', `${life.deaths??0} deaths // session ${life.session||'n/a'}`),
     metricCell('AI', `${ai.mode||'tiny-local'} ${ai.confidence??0}%`, ai.auto_mode?'auto mode':'manual mode')
   ].join('');
-  el.innerHTML=`${dock}<div class="cyd-grid">${statGrid}</div><div class="cyd-buddy-panels"><section><h3>Current Voice</h3><p>${escapeHtml(phrases.current||cyd.message||'quiet')}</p><small>${escapeHtml(phrases.personality||'personality n/a')} // scroll ${escapeHtml(phrases.scroll_ms??'n/a')}ms // SD phrases ${phrases.sd_lookup?'on':'off'}</small></section><section><h3>Tiny AI Insight</h3><p>${escapeHtml(ai.insight||learn.summary||'learning state pending')}</p><small>${escapeHtml(ai.daily_summary||'daily summary pending')}</small></section><section><h3>Memory Bank</h3><ul>${memories}</ul><small>${escapeHtml(mem.random||'')}</small></section></div><div class="cyd-leases">${leaseHtml}</div>`;
+  const settings=renderCydSettingsPanel(cyd);
+  el.innerHTML=`${dock}<div class="cyd-grid">${statGrid}</div>${settings}<div class="cyd-buddy-panels"><section><h3>Current Voice</h3><p>${escapeHtml(phrases.current||cyd.message||'quiet')}</p><small>${escapeHtml(phrases.personality||'personality n/a')} // scroll ${escapeHtml(phrases.scroll_ms??'n/a')}ms // SD phrases ${phrases.sd_lookup?'on':'off'}</small></section><section><h3>Tiny AI Insight</h3><p>${escapeHtml(ai.insight||learn.summary||'learning state pending')}</p><small>${escapeHtml(ai.daily_summary||'daily summary pending')}</small></section><section><h3>Memory Bank</h3><ul>${memories}</ul><small>${escapeHtml(mem.random||'')}</small></section></div><div class="cyd-leases">${leaseHtml}</div>`;
+}
+
+function renderCydSettingsPanel(cyd={}){
+  const settings=cyd.settings||{};
+  const menus=settings.menus||[];
+  const active=settings.active_menu||'home';
+  const display=settings.display||{}, face=settings.face||{}, phrases=settings.phrases||{}, advanced=settings.advanced||{};
+  const menuButtons=menus.map(m=>`<button class="${m.id===active?'active':''}" onclick="cydBuddyOpenMenu('${escapeHtml(m.id)}')"><b>${escapeHtml(m.label||m.id)}</b><small>${escapeHtml(m.hint||'')}</small></button>`).join('') || '<div class="scanline-note">Buddy firmware has not advertised settings menus yet.</div>';
+  const pending=settings.pending_command;
+  const pendingText=pending?`pending ${escapeHtml(pending.action||'command')} → ${escapeHtml(pending.menu||'menu')}`:(settings.last_ack?`last ack ${escapeHtml(JSON.stringify(settings.last_ack).slice(0,80))}`:'ready');
+  const msg=cydBuddyActionStatus?`<div class="scanline-note">${escapeHtml(cydBuddyActionStatus)}</div>`:'';
+  return `<div class="cyd-settings-console"><div class="cyd-settings-head"><div><h3>Buddy Settings Console</h3><p>Open Buddy settings menus/submenus from Spac3-Gh0st while docked. Commands ride in the CYD telemetry payload; no passwords or secrets are stored.</p></div><span>${pendingText}</span></div><div class="cyd-menu-buttons">${menuButtons}</div><div class="cyd-settings-form"><label>Brightness<input id="cydBrightness" type="range" min="5" max="100" value="${escapeHtml(display.brightness??70)}"></label><label>Sleep seconds<input id="cydSleep" type="number" min="0" max="3600" value="${escapeHtml(display.sleep_s??60)}"></label><label>Theme<select id="cydTheme"><option ${display.theme==='matrix'?'selected':''}>matrix</option><option ${display.theme==='night'?'selected':''}>night</option><option ${display.theme==='amber'?'selected':''}>amber</option><option ${display.theme==='mono'?'selected':''}>mono</option></select></label><label>Mood<select id="cydMood"><option ${face.mood==='auto'?'selected':''}>auto</option><option ${face.mood==='sleepy'?'selected':''}>sleepy</option><option ${face.mood==='curious'?'selected':''}>curious</option><option ${face.mood==='guardian'?'selected':''}>guardian</option><option ${face.mood==='party'?'selected':''}>party</option></select></label><label>Phrase scroll ms<input id="cydScroll" type="number" min="20" max="500" value="${escapeHtml(phrases.scroll_ms??80)}"></label><label class="cyd-check"><input id="cydDiagnostics" type="checkbox" ${advanced.diagnostics?'checked':''}> Diagnostics overlay</label><button onclick="cydBuddySaveSettings()">Save Buddy Settings</button><button onclick="cydBuddyOpenMenu('home')">Back to Buddy Home</button></div>${msg}</div>`;
+}
+
+async function cydBuddyOpenMenu(menu){
+  cydBuddyActionStatus=`Opening CYD Buddy ${menu} menu...`;
+  try{ const r=await fetch('/api/cyd/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'open_menu',menu})}); const d=await r.json(); cydBuddyActionStatus=d.ok?`CYD Buddy menu queued: ${d.active_menu||menu}`:`CYD Buddy menu failed: ${d.error||r.status}`; }
+  catch(e){ cydBuddyActionStatus=`CYD Buddy menu failed: ${e}`; }
+  refresh();
+}
+async function cydBuddySaveSettings(){
+  const values={display:{brightness:document.getElementById('cydBrightness')?.value,sleep_s:document.getElementById('cydSleep')?.value,theme:document.getElementById('cydTheme')?.value},face:{mood:document.getElementById('cydMood')?.value,animation:'auto',personality:'chill'},phrases:{scroll_ms:document.getElementById('cydScroll')?.value},advanced:{diagnostics:!!document.getElementById('cydDiagnostics')?.checked}};
+  cydBuddyActionStatus='Saving CYD Buddy settings...';
+  try{ const r=await fetch('/api/cyd/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'save',menu:'display',values})}); const d=await r.json(); cydBuddyActionStatus=d.ok?'CYD Buddy settings queued. Buddy will apply them on next telemetry poll.':`CYD Buddy settings failed: ${d.error||r.status}`; }
+  catch(e){ cydBuddyActionStatus=`CYD Buddy settings failed: ${e}`; }
+  refresh();
 }
 
 function renderMeshtastic(mesh={}){

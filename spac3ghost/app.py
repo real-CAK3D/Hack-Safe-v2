@@ -18,7 +18,7 @@ from .collectors import active_recon, bluetooth_status, calibrate_tilt_level, fu
 from . import __version__, hostinfo, metrics
 from .config import load_config, save_config
 from .controls import ai_chat_ask, ai_chat_status, camera_status, external_control, external_status, ir_action, launch_proton_gui, service_status, services_status, set_camera_feed, set_vision_enabled, spicy_tool_action, spicy_tools_status, lab_toys_status, companion_firmware_action, flipper_feature_action, lab_gate_action, nfc_rfid_action, safety_boundary_action, lab_software_action, tailscale_ip, tailscale_status, tailscale_up, tailscale_restart, tailscale_protect, toggle_service, toggle_vpn, vpn_status, select_vpn_profile, connect_vpn_profile
-from .cyd import cyd_status, record_heartbeat, telemetry_from_status
+from .cyd import cyd_settings, cyd_status, record_heartbeat, telemetry_from_status, update_cyd_settings
 from .personality import Spac3Voice, choose_mood, event_from_status, merged_faces
 from .paths import ROOT, WEB_DIR
 from .plugins import PluginManager
@@ -392,6 +392,8 @@ class Handler(BaseHTTPRequestHandler):
             return json_response(self, status_snapshot(wait=False))
         if path == '/api/cyd/status':
             return json_response(self, cyd_status())
+        if path == '/api/cyd/settings':
+            return json_response(self, cyd_settings())
         if path == '/api/cyd/telemetry':
             return json_response(self, telemetry_from_status(status_snapshot(wait=False)))
         if path == '/api/mesh/status':
@@ -531,6 +533,13 @@ class Handler(BaseHTTPRequestHandler):
             add_event('cyd', f"CYD Buddy heartbeat from {result.get('buddy', {}).get('ip') or 'unknown'}")
             _trigger_status_refresh(force=True)
             return json_response(self, result)
+        if path == '/api/cyd/settings':
+            body = read_json_body(self)
+            result = update_cyd_settings(body)
+            menu = result.get('active_menu') or body.get('menu') or 'settings'
+            add_event('cyd', result.get('error') or f"CYD Buddy settings command queued: {menu}")
+            _trigger_status_refresh(force=True)
+            return json_response(self, result, code=200 if result.get('ok') else 400)
         if path == '/api/vpn/toggle':
             result = toggle_vpn()
             add_event('vpn', result.get('message') or result.get('error') or VOICE.vpn_result(result.get('action', 'toggle')))
