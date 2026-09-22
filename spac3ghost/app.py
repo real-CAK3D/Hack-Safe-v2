@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from .collectors import active_recon, bluetooth_status, calibrate_tilt_level, full_status, handshake_capture_status, known_devices_status, known_wifi_passwords, lan_status, meshtastic_status, monitor_mode_status, pwnagotchi_plugins, sensor_status, set_monitor_mode, start_owned_lab_capture, stop_owned_lab_capture, tilt_status, update_known_device, weather_tile_url, wifi_psk_action, wifi_status, wifi_target_action
+from .collectors import active_recon, bluetooth_status, calibrate_tilt_level, full_status, handshake_capture_status, known_devices_status, known_wifi_passwords, lan_status, meshtastic_status, monitor_mode_status, openweather_key_status, pwnagotchi_plugins, sensor_status, set_monitor_mode, start_owned_lab_capture, stop_owned_lab_capture, tilt_status, update_known_device, weather_tile_url, wifi_psk_action, wifi_status, wifi_target_action
 from . import __version__, hostinfo, metrics
 from .config import load_config, save_config
 from .controls import ai_chat_ask, ai_chat_status, camera_status, external_control, external_status, ir_action, launch_proton_gui, service_status, services_status, set_camera_feed, set_vision_enabled, spicy_tool_action, spicy_tools_status, lab_toys_status, companion_firmware_action, flipper_feature_action, lab_gate_action, nfc_rfid_action, safety_boundary_action, lab_software_action, tailscale_ip, tailscale_status, tailscale_up, tailscale_restart, tailscale_protect, toggle_service, toggle_vpn, vpn_status, select_vpn_profile, connect_vpn_profile
@@ -269,11 +269,15 @@ def _collect_status_payload():
     }
     started = time.time()
     results = {}
-    with ThreadPoolExecutor(max_workers=6) as pool:
+    # lab_toys runs ~9 of its own sub-probes (Tailscale-hosted software checks, hardware
+    # detection, etc.) and is not on the fast live-refresh path, so it gets more time than
+    # the others before falling back to a warming placeholder for just that section.
+    per_key_timeout = {'lab_toys': 20}
+    with ThreadPoolExecutor(max_workers=len(collectors)) as pool:
         futures = {pool.submit(fn): key for key, fn in collectors.items()}
         for fut, key in ((f, futures[f]) for f in futures):
             try:
-                results[key] = fut.result(timeout=7)
+                results[key] = fut.result(timeout=per_key_timeout.get(key, 7))
             except Exception as exc:
                 results[key] = {'available': False, 'error': str(exc)}
     status = results.pop('base') if isinstance(results.get('base'), dict) else {'time': int(time.time()), 'error': results.get('base')}
@@ -398,6 +402,8 @@ class Handler(BaseHTTPRequestHandler):
             return json_response(self, telemetry_from_status(status_snapshot(wait=False)))
         if path == '/api/mesh/status':
             return json_response(self, {'meshtastic': meshtastic_status(force=parsed.query in ('force=1', 'refresh=1'))})
+        if path == '/api/weather/keycheck':
+            return json_response(self, openweather_key_status())
         if path == '/api/health':
             return json_response(self, health_payload())
         if path == '/api/metrics':

@@ -1,5 +1,49 @@
 # Changelog
 
+## 2.3.0
+
+Pulled in this session's CYD Buddy work from GitHub (dock/telemetry, Meshtastic gateway card,
+settings console) and polished/fixed the rest of the app around it.
+
+### Fixed
+- **Weather key diagnostics.** The OpenWeather key had no schema entry in `DEFAULT_CONFIG`, so it
+  silently worked by accident; a bad `config.json` would also silently wipe the *entire* saved
+  config back to defaults with zero trace. Both fixed: `weather` is now a real config section,
+  `load_config()` keeps serving the last good in-memory config on a parse error (and backs the bad
+  file up to `*.json.corrupt` instead of overwriting it), and a new `/api/weather/keycheck` +
+  "Recheck Key" button in Weather Ops actually calls OpenWeatherMap and reports *why* a key isn't
+  working (missing vs. present-but-rejected vs. unreachable) instead of just "key missing".
+- **CYD Buddy settings console did nothing on the device.** The dashboard could already queue a
+  settings command, but the firmware (`CYD-Buddy` repo) never read it back from telemetry. Fixed
+  in firmware: backlight is now a real, persisted setting (was hardcoded full brightness forever),
+  idle-sleep timeout is configurable (was a hardcoded 30 minutes), and mood/personality/eye-theme/
+  phrase-scroll/SD-phrase-bank all apply for real, with an ack on the next heartbeat. The console's
+  own dropdowns were also fixed to use the firmware's real mood/personality names instead of
+  invented ones, and a "diagnostics overlay" toggle that mapped to nothing was removed.
+- **Lab tab could go completely blank.** `lab_toys_status()` ran ~9 sub-checks one after another;
+  on a slow probe (or several) that could take longer than the dashboard's collector timeout,
+  silently blanking every Lab card (Safety Boundaries, Hardware Docks, Software, Flipper...). It
+  now runs those checks concurrently and gets a longer allowance before falling back.
+- **Flipper-Inspired Toys had no UI at all.** The backend (`flipper_zero_status`/
+  `flipper_feature_action`) was fully built but nothing rendered it or called it. Added the
+  missing Lab -> Hardware card.
+- **CYD Buddy dock was invisible in Lab -> Hardware Docks** (only had its own Externals card).
+  Added a `cyd-buddy` entry there too.
+- **theBAK3RY camera error was a raw exception string.** A Tailscale (100.x) snapshot URL that
+  isn't reachable yet now says so explicitly (check Tailscale device approval) instead of printing
+  a bare connection error.
+- Removed the duplicate God's Eye View cards from Externals (it's already a launcher on the
+  Dashboard's Open Tools card).
+
+### Changed
+- Every inline chart in Systems and Signals (CPU/RAM/disk/network/GPS/weather waves, etc.) now
+  renders through the same canvas engine as the Deck tab's telemetry chart (gradient fill,
+  smoothed line, hover tooltip) instead of the old static SVG sparkline -- one shared
+  `liveWave()` choke point means every call site picked this up automatically (`web/charts.js`).
+- Deck's Network Graph is now editable: add a custom node (router, switch, camera, ...), a Link
+  Mode to connect any two nodes (auto-discovered or custom), double-click to rename, right-click
+  to remove. Saved in the browser (localStorage), separate from the live device graph.
+
 ## 2.2.0
 
 ### New "Deck" tab (`web/deck.js`, `web/deck.css`)

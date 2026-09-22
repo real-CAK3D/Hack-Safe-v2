@@ -161,5 +161,90 @@ class FrontendAssetTests(unittest.TestCase):
         self.assertTrue((WEB_DIR / 'v2.js').exists())
 
 
+class WeatherKeyDiagnosticsTests(unittest.TestCase):
+    def test_no_key_reports_configured_false_with_actionable_note(self):
+        from spac3ghost.collectors import openweather_key_status
+        with mock.patch('spac3ghost.collectors._openweather_key', return_value=''):
+            result = openweather_key_status()
+        self.assertFalse(result['configured'])
+        self.assertFalse(result['valid'])
+        self.assertIn('openweathermap_api_key', result['note'])
+
+    def test_key_lookup_tolerates_quotes_and_whitespace(self):
+        from spac3ghost.collectors import _openweather_key
+        with mock.patch('spac3ghost.collectors.load_config', return_value={'weather': {'openweathermap_api_key': '  "abc123"  '}}):
+            self.assertEqual(_openweather_key(), 'abc123')
+
+
+class ConfigCorruptionRecoveryTests(unittest.TestCase):
+    def test_bad_json_falls_back_without_losing_the_last_good_config(self):
+        from spac3ghost import config as config_mod
+        good = config_mod.load_config()
+        good['weather']['openweathermap_api_key'] = 'sentinel-key'
+        config_mod.save_config(good)
+        config_mod._LAST_GOOD_CONFIG['value'] = None
+        self.assertEqual(config_mod.load_config()['weather']['openweathermap_api_key'], 'sentinel-key')
+        # _LAST_GOOD_CONFIG is now populated from the read above; that in-memory copy is the
+        # safety net a corrupt file falls back to, so it must NOT be cleared before corrupting.
+        original = config_mod.CONFIG_FILE.read_text(encoding='utf-8')
+        try:
+            config_mod.CONFIG_FILE.write_text('{not valid json', encoding='utf-8')
+            recovered = config_mod.load_config()
+            self.assertEqual(recovered['weather']['openweathermap_api_key'], 'sentinel-key')
+            self.assertTrue(config_mod.CONFIG_FILE.with_suffix('.json.corrupt').exists())
+        finally:
+            config_mod.CONFIG_FILE.write_text(original, encoding='utf-8')
+            config_mod.CONFIG_FILE.with_suffix('.json.corrupt').unlink(missing_ok=True)
+            config_mod._LAST_GOOD_CONFIG['value'] = None
+
+
+class LabToysStatusTests(unittest.TestCase):
+    def test_all_sections_present_even_if_one_sub_probe_errors(self):
+        from spac3ghost.controls import lab_toys_status
+        with mock.patch('spac3ghost.controls.piaware_status', side_effect=RuntimeError('boom')):
+            result = lab_toys_status()
+        for key in ('aquarium', 'flipper', 'safety_boundaries', 'workflows', 'optical_audio',
+                    'piaware', 'ir', 'nfc_rfid', 'hardware_docks', 'software'):
+            self.assertIn(key, result)
+        self.assertFalse(result['piaware'].get('available', True))
+
+    def test_flipper_is_reachable_from_lab_toys_status(self):
+        from spac3ghost.controls import lab_toys_status
+        result = lab_toys_status()
+        self.assertIn('features', result['flipper'])
+        self.assertGreaterEqual(len(result['flipper']['features']), 1)
+
+
+class HardwareDocksCydTests(unittest.TestCase):
+    def test_cyd_buddy_dock_is_listed(self):
+        from spac3ghost.controls import hardware_docks_status
+        docks = hardware_docks_status()['docks']
+        ids = [d['id'] for d in docks]
+        self.assertIn('cyd-buddy', ids)
+
+
+class CydDefaultsTests(unittest.TestCase):
+    def test_defaults_match_real_firmware_behavior(self):
+        from spac3ghost.cyd import DEFAULT_SETTINGS
+        # Firmware backlight was always full brightness; idle-sleep was a hardcoded 30 minutes.
+        self.assertEqual(DEFAULT_SETTINGS['display']['brightness'], 100)
+        self.assertEqual(DEFAULT_SETTINGS['display']['sleep_s'], 1800)
+        self.assertNotIn('advanced', DEFAULT_SETTINGS)  # dropped: mapped to nothing on the device
+
+    def test_save_action_rejects_unknown_mood_and_personality(self):
+        from spac3ghost.cyd import update_cyd_settings
+        with mock.patch('spac3ghost.cyd.cyd_status', return_value={'connected': True}):
+            result = update_cyd_settings({'action': 'save', 'values': {'face': {'mood': 'not-a-real-mood', 'personality': 'nope'}}})
+        self.assertEqual(result['face']['mood'], 'auto')
+        self.assertEqual(result['face']['personality'], 'sassy')
+
+
+class FlipperActionTests(unittest.TestCase):
+    def test_unknown_feature_is_rejected(self):
+        from spac3ghost.controls import flipper_feature_action
+        result = flipper_feature_action('not-a-real-feature', 'enable')
+        self.assertFalse(result['ok'])
+
+
 if __name__ == '__main__':
     unittest.main()

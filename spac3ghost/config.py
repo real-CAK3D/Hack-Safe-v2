@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import os
 from copy import deepcopy
 from pathlib import Path
@@ -59,6 +60,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
     'vpn': {
         'profile': '',
+    },
+    'weather': {
+        # OpenWeatherMap is optional: wttr.in already supplies current conditions/forecast
+        # without a key. Only the radar tile overlay needs this.
+        'openweathermap_api_key': '',
     },
     'sensors': {
         'tilt_level_raw': 1,
@@ -504,6 +510,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 }
 
 
+_LAST_GOOD_CONFIG: Dict[str, Any] = {'value': None}
+
+
 def _merge(default: Any, override: Any) -> Any:
     if isinstance(default, dict) and isinstance(override, dict):
         merged = deepcopy(default)
@@ -546,10 +555,25 @@ def load_config() -> Dict[str, Any]:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     if CONFIG_FILE.exists():
         try:
-            return _normalize(_merge(DEFAULT_CONFIG, json.loads(CONFIG_FILE.read_text())))
-        except Exception:
+            config = _normalize(_merge(DEFAULT_CONFIG, json.loads(CONFIG_FILE.read_text())))
+            _LAST_GOOD_CONFIG['value'] = deepcopy(config)
+            return config
+        except Exception as exc:
+            # A syntax error here used to silently wipe every saved setting (moods, plugins,
+            # the weather key, everything) back to defaults with zero trace. Instead: keep
+            # serving the last config this process successfully loaded, and leave the bad
+            # file alone (copied aside) so it can be inspected/repaired instead of losing it.
+            try:
+                bad_copy = CONFIG_FILE.with_suffix('.json.corrupt')
+                bad_copy.write_text(CONFIG_FILE.read_text(errors='replace'))
+            except Exception:
+                pass
+            sys.stderr.write(f'[config] failed to read {CONFIG_FILE}: {exc}; backed up to *.json.corrupt\n')
+            if _LAST_GOOD_CONFIG['value'] is not None:
+                return deepcopy(_LAST_GOOD_CONFIG['value'])
             return deepcopy(DEFAULT_CONFIG)
     save_config(DEFAULT_CONFIG)
+    _LAST_GOOD_CONFIG['value'] = deepcopy(DEFAULT_CONFIG)
     return deepcopy(DEFAULT_CONFIG)
 
 

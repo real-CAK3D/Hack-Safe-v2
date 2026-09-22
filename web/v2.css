@@ -408,3 +408,7 @@ body.v2-compact .v2-tile .val { font-size: 19px; }
 .cyd-settings-form input, .cyd-settings-form select { width: 100%; min-width: 0; }
 .cyd-settings-form .cyd-check { display: flex; align-items: center; gap: 8px; min-height: 38px; }
 @media (max-width: 760px) { .cyd-settings-head { display: grid; } .cyd-settings-head span { text-align: left; } }
+
+/* Weather Ops: OpenWeather key recheck row --------------------------------- */
+.weather-key-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; white-space: normal !important; }
+.tiny-btn { min-height: 20px !important; padding: 1px 8px !important; font-size: 9.5px !important; border-radius: 999px !important; flex: none; }

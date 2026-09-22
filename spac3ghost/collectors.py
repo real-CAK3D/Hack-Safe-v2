@@ -13,6 +13,7 @@ import subprocess
 import time
 import urllib.parse
 import urllib.request
+import urllib.error
 import glob
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -1293,15 +1294,54 @@ def _float_or_none(value) -> float | None:
 
 
 def _openweather_key() -> str:
+    # Go through load_config() (not a second independent file read) so this sees exactly
+    # what the rest of the app sees, including a corrupt-file recovery via _LAST_GOOD_CONFIG.
     try:
-        cfg = _read_json_file(DATA_DIR / 'config.json', {})
-        weather_cfg = cfg.get('weather', {}) if isinstance(cfg, dict) else {}
-        key = weather_cfg.get('openweathermap_api_key') or weather_cfg.get('openweather_api_key')
-        if key:
-            return str(key).strip()
+        weather_cfg = load_config().get('weather', {})
+        if not isinstance(weather_cfg, dict):
+            weather_cfg = {}
+        for field in ('openweathermap_api_key', 'openweather_api_key', 'owm_api_key', 'api_key'):
+            key = weather_cfg.get(field)
+            if key:
+                # tolerate a pasted key still wrapped in quotes
+                return str(key).strip().strip('"').strip("'").strip()
     except Exception:
         pass
     return os.environ.get('OPENWEATHER_API_KEY', '').strip()
+
+
+def openweather_key_status() -> Dict[str, Any]:
+    """Diagnostics for the Weather Ops 'key missing' badge: where a key was found (if any),
+    and whether OpenWeatherMap actually accepts it (a key can be present but wrong/expired).
+    """
+    key = _openweather_key()
+    if not key:
+        try:
+            weather_cfg = load_config().get('weather', {})
+        except Exception:
+            weather_cfg = {}
+        source = 'none'
+        note = (f'Add it under weather.openweathermap_api_key in {DATA_DIR / "config.json"} '
+                'or the Settings tab, or set OPENWEATHER_API_KEY.')
+        if not isinstance(weather_cfg, dict):
+            note = f'{DATA_DIR / "config.json"} did not parse as valid JSON; see server log / *.json.corrupt.'
+        return {'configured': False, 'valid': False, 'source': source, 'masked': '', 'note': note}
+    masked = (key[:4] + '…' + key[-2:]) if len(key) > 8 else '…'
+    result = {'configured': True, 'valid': None, 'source': 'config/env', 'masked': masked, 'note': 'not checked yet'}
+    try:
+        url = f'https://api.openweathermap.org/data/2.5/weather?q=London&appid={urllib.parse.quote(key)}'
+        with urllib.request.urlopen(url, timeout=6) as resp:
+            result['valid'] = 200 <= resp.status < 300
+            result['note'] = 'Key accepted.' if result['valid'] else f'Unexpected HTTP {resp.status}.'
+    except urllib.error.HTTPError as exc:
+        result['valid'] = False
+        result['note'] = ('Key rejected (401 Unauthorized). New OpenWeatherMap keys can take up '
+                           'to a couple of hours to activate; otherwise re-check for typos/whitespace.'
+                           if exc.code == 401 else f'OpenWeatherMap returned HTTP {exc.code}.')
+    except Exception as exc:
+        result['valid'] = None
+        result['note'] = f'Could not reach OpenWeatherMap to verify: {exc}'
+    return result
 
 
 def weather_tile_url(layer: str, z: str, x: str, y: str) -> tuple[bytes, str]:

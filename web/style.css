@@ -78,9 +78,10 @@ header { border:1px solid #26332e; background:#090d11dd; box-shadow:0 0 18px #00
 .sec-wave { position:relative; background:linear-gradient(180deg,#04140a,#07120c 60%,#020603); border-color:color-mix(in srgb,var(--wave) 48%,#1e4b31); }
 .wave-head { display:flex; justify-content:space-between; gap:8px; color:var(--dim); font-size:11px; margin-bottom:3px; }
 .wave-head b { color:var(--wave); text-shadow:0 0 8px var(--wave); }
-.wave { width:100%; height:58px; display:block; background:repeating-linear-gradient(90deg,#15351f55 0 1px,transparent 1px 26px),repeating-linear-gradient(0deg,#15351f44 0 1px,transparent 1px 19px); filter:drop-shadow(0 0 5px var(--wave)); }
-.wave-line { fill:none; stroke:var(--wave); stroke-width:2.4; vector-effect:non-scaling-stroke; opacity:.95; }
-.wave-fill { fill:color-mix(in srgb, var(--wave) 18%, transparent); opacity:.75; }
+.tc-wrap { position:relative; width:100%; height:58px; background:repeating-linear-gradient(90deg,#15351f55 0 1px,transparent 1px 26px),repeating-linear-gradient(0deg,#15351f44 0 1px,transparent 1px 19px); border-radius:4px; overflow:hidden; }
+.tc-canvas { width:100%; height:100%; display:block; cursor:crosshair; }
+.tc-tip { position:absolute; top:2px; padding:1px 5px; border-radius:5px; background:#000c; border:1px solid var(--wave); color:var(--wave); font:700 9px/1.4 monospace; pointer-events:none; z-index:2; }
+.tc-tip[hidden] { display:none; }
 .wave-meta { display:grid; grid-template-columns:auto auto auto 1fr; gap:6px; margin-top:3px; color:var(--dim); font-size:9px; text-transform:uppercase; letter-spacing:.04em; }
 .wave-meta span:last-child { color:var(--wave); text-align:right; font-family:monospace; }
 @keyframes wave-glow { from { opacity:.72; } to { opacity:1; } }
@@ -429,7 +430,7 @@ button.is-error { color:var(--red); border-color:var(--red); }
   .controls-grid, .local-controls { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .mission-grid, .rf-grid, .sensor-top, .vision-actions, .settings-actions, .stat-row, .attention-layers { grid-template-columns:1fr; }
   .mission-card, .stat-card { min-height:0; }
-  .wave { height:48px; }
+  .tc-wrap { height:48px; }
   .radar { height:150px; max-width:150px; width:150px; margin:0 auto; }
   .radar .radar-pulse { width:132px; height:132px; margin:-66px 0 0 -66px; }
   .weather { min-height:88px; grid-template-columns:36px 1fr; }
@@ -710,33 +711,13 @@ button.is-error { color:var(--red); border-color:var(--red); }
 
 
 /* God's Eye View local launch bay */
-.godseye-page { grid-template-columns:1.25fr .9fr; align-items:stretch; }
-.godseye-hero-card { grid-row:span 2; position:relative; min-height:420px; display:flex; flex-direction:column; justify-content:flex-end; gap:10px; background:radial-gradient(circle at 50% 30%, #123151 0, #071018 38%, #050508 78%); }
-.godseye-hero-card h2 { color:var(--cyan); font-size:clamp(28px,6vw,54px); margin:0; text-shadow:0 0 18px #5ac8fa; letter-spacing:.08em; text-transform:uppercase; }
-.godseye-hero-card p { max-width:760px; color:#dfffe8; line-height:1.45; }
-.godseye-orbit { position:absolute; inset:22px 18px auto; height:230px; border-radius:50%; border:1px solid #5ac8fa55; background:radial-gradient(circle, #5ac8fa22 0 3px, transparent 4px), radial-gradient(circle at 50% 50%, #27c93f18, transparent 60%); box-shadow:0 0 28px #5ac8fa33, inset 0 0 28px #27c93f22; overflow:hidden; }
-.godseye-orbit:before, .godseye-orbit:after { content:""; position:absolute; inset:18%; border:1px dashed #27c93f66; border-radius:50%; transform:rotateX(64deg) rotateZ(-18deg); }
-.godseye-orbit:after { inset:31%; border-color:#ffbd2e66; transform:rotateX(64deg) rotateZ(38deg); }
-.godseye-orbit i { position:absolute; width:7px; height:7px; border-radius:50%; background:var(--cyan); box-shadow:0 0 12px currentColor; animation:godseye-drift 9s linear infinite; }
-.godseye-orbit i:nth-child(1){ left:13%; top:48%; animation-duration:8s; color:var(--green); }
-.godseye-orbit i:nth-child(2){ left:63%; top:21%; animation-duration:11s; animation-delay:-3s; color:var(--yellow); }
-.godseye-orbit i:nth-child(3){ left:78%; top:62%; animation-duration:14s; animation-delay:-6s; color:var(--cyan); }
 @keyframes godseye-drift { 0%{transform:translate(-8px,0) scale(.85)} 50%{transform:translate(14px,-18px) scale(1.25)} 100%{transform:translate(-8px,0) scale(.85)} }
-.godseye-actions { display:flex; flex-wrap:wrap; gap:8px; }
 .button-link { display:inline-flex; align-items:center; justify-content:center; min-height:34px; border:1px solid #1e4b31; background:#07120c; color:var(--green); text-decoration:none; padding:7px 10px; text-transform:uppercase; font-weight:bold; font-size:12px; box-shadow:inset 0 0 10px #000; }
 .button-link:hover { border-color:var(--cyan); color:var(--cyan); box-shadow:0 0 12px #5ac8fa44, inset 0 0 10px #000; }
 #godseyeStatus { min-height:90px; color:var(--green); white-space:pre-wrap; }
-.godseye-grid { display:grid; grid-template-columns:1fr; gap:8px; }
-.godseye-grid div, .godseye-layer-list li { border:1px solid #1e4b31; background:#06120b; padding:9px; display:grid; gap:4px; }
-.godseye-grid b, .godseye-layer-list b { color:var(--cyan); text-transform:uppercase; letter-spacing:.08em; }
-.godseye-grid span, .godseye-layer-list span { color:var(--dim); font-size:11px; line-height:1.35; }
-.godseye-layer-list { list-style:none; padding:0; margin:0; display:grid; gap:8px; }
-@media (max-width:900px) { .godseye-page { grid-template-columns:1fr; } .godseye-hero-card { min-height:360px; } .godseye-orbit { height:180px; } }
 
 
 /* Ganja pass: Vision-integrated God’s Eye + companion firmware cards + vault reveal switch */
-.vision-godseye-card, .vision-godseye-boundary { grid-column:1 / -1; }
-.vision-godseye-card { min-height:340px; }
 .companion-firmware-card { grid-column:span 2; }
 .companion-firmware-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:8px; }
 .companion-card { border:1px solid #1e4b31; background:linear-gradient(180deg,#06120b,#020403); padding:8px; color:#d7ffe2; box-shadow:inset 0 0 16px #000; }

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 import json
 import os
 import subprocess
@@ -416,7 +418,10 @@ def camera_status(force: bool = False) -> Dict[str, Any]:
                     feed['status_note'] = f"HTTP {feed.get('http_status')}"
                 except Exception as exc:
                     feed['available'] = False
-                    feed['status_note'] = str(exc)[:160]
+                    if feed_url.startswith('http://100.') or feed_url.startswith('https://100.'):
+                        feed['status_note'] = f'not reachable over Tailscale yet ({exc}); check that this device is approved in the Tailscale admin console'
+                    else:
+                        feed['status_note'] = str(exc)[:160]
             elif feed_url:
                 feed['status_note'] = 'refusing non-private camera URL probe'
         else:
@@ -2060,7 +2065,15 @@ def hardware_docks_status() -> Dict[str, Any]:
     esp_matches = [line for line in usb.splitlines() if any(tok in line.lower() for tok in ('303a:', '10c4:', '1a86:7523', '1a86:55d4', 'cp210', 'ch340', 'esp'))]
     rtl_sdr_matches = [line for line in usb.splitlines() if any(tok in line.lower() for tok in ('0bda:2832', '0bda:2838', 'rtl2832', 'rtl-sdr'))]
     pwn_usb = [x for x in links if x.startswith(('usb', 'enx'))]
+    from .cyd import cyd_status as _cyd_dock_status
+    cyd_state = _cyd_dock_status(include_settings=False)
     docks = [
+        {
+            'id': 'cyd-buddy', 'label': 'CYD Buddy Dock', 'kind': 'ESP32-2432S028R desk buddy over Wi-Fi (Wu-Tang LAN hotspot)',
+            'detected': bool(cyd_state.get('connected')), 'candidates': [cyd_state.get('ip')] if cyd_state.get('ip') else [],
+            'home': 'Externals -> CYD Buddy Dock', 'readiness': cyd_state.get('dock_label') or 'HOTSPOT CHECK',
+            'actions': ['heartbeat status', 'settings console'], 'blocked_actions': ['flash without explicit firmware approval'],
+        },
         {
             'id': 'pwnagotchi-zero2', 'label': 'Pwnagotchi Pi Zero 2 WH Dock', 'kind': 'USB gadget/Ethernet/serial dock',
             'detected': bool(pwn_usb), 'candidates': pwn_usb, 'home': 'Lab → Pwnagotchi / Hashcat Workflows',
@@ -2112,23 +2125,38 @@ def hardware_docks_status() -> Dict[str, Any]:
 
 
 def lab_toys_status() -> Dict[str, Any]:
-    return {
+    # Each of these shells out to several external tools/services; run them concurrently
+    # instead of one after another, so a couple of slow probes (Tailscale/software checks)
+    # don't stack up past the dashboard's overall per-collector timeout and blank the
+    # whole Lab tab (safety boundaries, hardware docks, Flipper, software, everything).
+    jobs = {
+        'flipper': flipper_zero_status,
+        'safety_boundaries': safety_boundary_status,
+        'workflows': lab_workflows_status,
+        'optical_audio': pi5_spdif_gpio_status,
+        'piaware': piaware_status,
+        'ir': ir_status,
+        'nfc_rfid': nfc_rfid_status,
+        'hardware_docks': hardware_docks_status,
+        'software': lab_software_status,
+    }
+    out: Dict[str, Any] = {
         'aquarium': {
             'mode': 'local AI-style animated reef',
             'inputs': ['mood', 'weather', 'threat', 'vision', 'system load'],
             'installed': True,
             'notes': 'No external dependency; fish behavior is generated in the browser from live Spac3-Gh0st status.',
         },
-        'flipper': flipper_zero_status(),
-        'safety_boundaries': safety_boundary_status(),
-        'workflows': lab_workflows_status(),
-        'optical_audio': pi5_spdif_gpio_status(),
-        'piaware': piaware_status(),
-        'ir': ir_status(),
-        'nfc_rfid': nfc_rfid_status(),
-        'hardware_docks': hardware_docks_status(),
-        'software': lab_software_status(),
     }
+    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+        futures = {pool.submit(fn): key for key, fn in jobs.items()}
+        for fut in futures:
+            key = futures[fut]
+            try:
+                out[key] = fut.result(timeout=8)
+            except Exception as exc:
+                out[key] = {'available': False, 'error': str(exc) or type(exc).__name__}
+    return out
 
 
 def service_status(name: str) -> Dict[str, Any]:

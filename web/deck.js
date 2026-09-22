@@ -53,7 +53,7 @@
       ${CARD('deck-chart', 'System Telemetry', `<div class="deck-toolbar"><div class="seg" id="deckRange"><button data-r="60">1m</button><button data-r="300" class="on">5m</button><button data-r="900">15m</button><button data-r="1800">30m</button></div><div class="deck-legend" id="deckLegend"></div></div><div class="deck-canvas-wrap"><canvas id="deckChart"></canvas><div class="deck-tip" id="deckChartTip" hidden></div></div><div class="deck-stats" id="deckStats"></div>`)}
       ${CARD('deck-radar', 'Signal Radar', `<div class="deck-canvas-wrap sq"><canvas id="deckRadar"></canvas><div class="deck-tip" id="deckRadarTip" hidden></div></div><div class="deck-legend static"><i class="lg wifi"></i>Wi-Fi<i class="lg bt"></i>Bluetooth<i class="lg lan"></i>LAN</div>`)}
       ${CARD('deck-spectrum', 'Wi-Fi Spectrum', `<div class="deck-canvas-wrap"><canvas id="deckSpectrum"></canvas></div><div class="mini" id="deckSpectrumNote"></div>`)}
-      ${CARD('deck-graph', 'Network Graph', `<div class="deck-canvas-wrap"><canvas id="deckGraph"></canvas><div class="deck-tip" id="deckGraphTip" hidden></div></div><div class="mini">Drag nodes. Solid links are connected, dashed are visible-only.</div>`)}
+      ${CARD('deck-graph', 'Network Graph', `<div class="deck-toolbar"><div class="seg"><button id="deckGraphAddBtn" type="button">+ Node</button><button id="deckGraphLinkBtn" type="button">Link mode: off</button><button id="deckGraphClearBtn" type="button">Clear custom</button></div></div><div class="deck-graph-form" id="deckGraphForm" hidden><input id="deckGraphLabel" type="text" maxlength="24" placeholder="Node label (e.g. Switch, Modem)"><select id="deckGraphType"><option value="custom">Device</option><option value="wifi">Wi-Fi-style</option><option value="bt">Bluetooth-style</option><option value="lan">LAN-style</option></select><button id="deckGraphSaveBtn" type="button">Add</button><button id="deckGraphCancelBtn" type="button">Cancel</button></div><div class="deck-canvas-wrap"><canvas id="deckGraph"></canvas><div class="deck-tip" id="deckGraphTip" hidden></div></div><div class="mini">Drag nodes to arrange. + Node adds a custom device (router, switch, camera...); Link mode connects any two nodes; double-click a custom node to rename, right-click to remove.</div>`)}
       ${CARD('deck-devices', 'Devices', `<div class="deck-toolbar"><div class="seg" id="deckFilter"><button data-f="all" class="on">All</button><button data-f="wifi">Wi-Fi</button><button data-f="bt">Bluetooth</button><button data-f="lan">LAN</button></div><input id="deckSearch" type="search" placeholder="Filter..." aria-label="Filter devices"></div><div class="deck-table-wrap"><table class="deck-table" id="deckDevTable"></table></div>`)}
       ${CARD('deck-procs', 'Top Processes', `<div class="deck-toolbar"><div class="seg" id="deckPsort"><button data-p="cpu" class="on">CPU</button><button data-p="mem">Memory</button></div></div><div class="deck-table-wrap"><table class="deck-table" id="deckProcTable"></table></div>`)}
       ${CARD('deck-disks', 'Storage', `<div class="deck-rings" id="deckRings"></div>`)}
@@ -71,6 +71,20 @@
     seg('#deckPsort', 'p', v => { state.psort = v; renderProcs(); });
     seg('#deckEvFilter', 'e', v => { state.evFilter = v; renderEvents(); });
     $('#deckSearch').addEventListener('input', e => { state.search = e.target.value.toLowerCase(); renderDevices(); });
+    $('#deckGraphAddBtn').addEventListener('click', () => { const f = $('#deckGraphForm'); f.hidden = !f.hidden; if (!f.hidden) $('#deckGraphLabel').focus(); });
+    $('#deckGraphCancelBtn').addEventListener('click', () => { $('#deckGraphForm').hidden = true; });
+    $('#deckGraphSaveBtn').addEventListener('click', () => {
+      const label = $('#deckGraphLabel').value.trim(); if (!label) return;
+      addCustomNode(label, $('#deckGraphType').value);
+      $('#deckGraphLabel').value = ''; $('#deckGraphForm').hidden = true;
+    });
+    $('#deckGraphLabel').addEventListener('keydown', e => { if (e.key === 'Enter') $('#deckGraphSaveBtn').click(); else if (e.key === 'Escape') $('#deckGraphForm').hidden = true; });
+    $('#deckGraphLinkBtn').addEventListener('click', e => {
+      graph.linkMode = !graph.linkMode; graph.linkFrom = null;
+      e.target.textContent = 'Link mode: ' + (graph.linkMode ? 'on (pick 2 nodes)' : 'off');
+      e.target.classList.toggle('on', graph.linkMode);
+    });
+    $('#deckGraphClearBtn').addEventListener('click', () => { if (graph.custom.nodes.length || graph.custom.edges.length) { if (confirm('Remove all custom nodes and links you added to the Network Graph?')) clearCustomGraph(); } });
     $('#deckDevTable').addEventListener('click', e => {
       const th = e.target.closest('th[data-k]'); if (th) { const k = th.dataset.k; state.sort = { k, dir: state.sort.k === k ? -state.sort.dir : (k === 'name' ? 1 : -1) }; renderDevices(); return; }
       const tr = e.target.closest('tr[data-id]'); if (tr) { state.selected = state.selected === tr.dataset.id ? null : tr.dataset.id; renderDevices(); }
@@ -191,7 +205,8 @@
 
   /* ------------------------------------------------------------------ signal radar */
   const radar = { blips: [], hover: null, sweep: 0 };
-  const TYPE_COL = { wifi: () => css('--green'), bt: () => css('--cyan'), lan: () => css('--yellow') };
+  const TYPE_COL = { wifi: () => css('--green'), bt: () => css('--cyan'), lan: () => css('--yellow'), custom: () => css('--purple') };
+  const colorFor = type => (TYPE_COL[type] ? TYPE_COL[type]() : css('--dim'));
   function radarBlips(list, w, h) {
     const cx = w / 2, cy = h / 2, R0 = Math.min(w, h) / 2 - 14;
     return list.map(d => {
@@ -261,10 +276,40 @@
   }
 
   /* ------------------------------------------------------------------ network graph (force-directed) */
-  const graph = { nodes: [], links: [], key: '', drag: null, hover: null };
+  const GRAPH_STORE_KEY = 'deckGraphCustom';
+  function loadCustomGraph() { try { const v = JSON.parse(localStorage.getItem(GRAPH_STORE_KEY) || ''); if (v && Array.isArray(v.nodes) && Array.isArray(v.edges)) return v; } catch (e) { /* first run or corrupt: start fresh */ } return { nodes: [], edges: [] }; }
+  function saveCustomGraph() { try { localStorage.setItem(GRAPH_STORE_KEY, JSON.stringify(graph.custom)); } catch (e) { /* private mode: edits just won't persist */ } }
+  const graph = { nodes: [], links: [], key: '', drag: null, hover: null, custom: loadCustomGraph(), rev: 0, linkMode: false, linkFrom: null, downPos: null };
+  function addCustomNode(label, type) {
+    const id = 'custom:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    graph.custom.nodes.push({ id, label: String(label).slice(0, 24), type: type || 'custom' });
+    saveCustomGraph(); graph.rev++;
+    if (window.v2Toast) v2Toast('Network graph', `Added node "${label}"`, 'ok', 1800);
+  }
+  function removeCustomNode(id) {
+    graph.custom.nodes = graph.custom.nodes.filter(n => n.id !== id);
+    graph.custom.edges = graph.custom.edges.filter(([a, b]) => a !== id && b !== id);
+    saveCustomGraph(); graph.rev++;
+  }
+  function renameCustomNode(id, label) {
+    const n = graph.custom.nodes.find(x => x.id === id); if (!n) return;
+    n.label = String(label).slice(0, 24); saveCustomGraph(); graph.rev++;
+  }
+  function addCustomEdge(a, b) {
+    if (a === b) return;
+    const exists = graph.custom.edges.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
+    if (exists) return;
+    graph.custom.edges.push([a, b]); saveCustomGraph(); graph.rev++;
+    if (window.v2Toast) v2Toast('Network graph', 'Linked nodes', 'ok', 1500);
+  }
+  function removeCustomEdge(a, b) {
+    graph.custom.edges = graph.custom.edges.filter(([x, y]) => !((x === a && y === b) || (x === b && y === a)));
+    saveCustomGraph(); graph.rev++;
+  }
+  function clearCustomGraph() { graph.custom = { nodes: [], edges: [] }; saveCustomGraph(); graph.rev++; }
   function buildGraph(w, h) {
     const { list } = devices();
-    const key = list.map(d => d.id).join('|');
+    const key = list.map(d => d.id).join('|') + '#' + graph.rev;
     if (graph.key === key) return; graph.key = key;
     const old = new Map(graph.nodes.map(n => [n.id, n]));
     const host = old.get('host') || { id: 'host', label: (status() && status().system && status().system.hostname) || 'this host', type: 'host', x: w / 2, y: h / 2, vx: 0, vy: 0, r: 15, fixed: true };
@@ -273,8 +318,19 @@
     list.forEach(d => {
       const o = old.get(d.id);
       const n = o || { id: d.id, x: w / 2 + (hash(d.id) - .5) * w * .6, y: h / 2 + (hash(d.id + 'y') - .5) * h * .6, vx: 0, vy: 0 };
-      Object.assign(n, { label: d.name, type: d.type, r: d.type === 'lan' ? 9 : d.type === 'wifi' ? 7 : 6, on: d.on, sig: d.sig, ref: d }); graph.nodes.push(n);
+      Object.assign(n, { label: d.name, type: d.type, r: d.type === 'lan' ? 9 : d.type === 'wifi' ? 7 : 6, on: d.on, sig: d.sig, ref: d, auto: true }); graph.nodes.push(n);
       graph.links.push({ a: host, b: n, on: d.on, len: 70 + (100 - d.sig) * 0.9 });
+    });
+    graph.custom.nodes.forEach(cn => {
+      const o = old.get(cn.id);
+      const n = o || { id: cn.id, x: w / 2 + (hash(cn.id) - .5) * w * .5, y: h / 2 + (hash(cn.id + 'y') - .5) * h * .5, vx: 0, vy: 0 };
+      Object.assign(n, { label: cn.label, type: cn.type || 'custom', r: 7, on: false, ref: null, auto: false });
+      graph.nodes.push(n);
+    });
+    const byId = new Map(graph.nodes.map(n => [n.id, n]));
+    graph.custom.edges.forEach(([a, b]) => {
+      const na = byId.get(a), nb = byId.get(b);
+      if (na && nb) graph.links.push({ a: na, b: nb, on: true, len: 90, custom: true });
     });
   }
   function stepGraph(dt, w, h) {
@@ -292,20 +348,27 @@
     buildGraph(w, h); stepGraph(dt, w, h);
     const t = performance.now() / 1000;
     graph.links.forEach(l => {
-      const col = TYPE_COL[l.b.type](); c.beginPath(); c.moveTo(l.a.x, l.a.y); c.lineTo(l.b.x, l.b.y);
+      const col = colorFor(l.b.type); c.beginPath(); c.moveTo(l.a.x, l.a.y); c.lineTo(l.b.x, l.b.y);
       c.strokeStyle = col + (l.on ? 'aa' : '44'); c.lineWidth = l.on ? 1.6 : 1; c.setLineDash(l.on ? [] : [4, 4]); c.stroke(); c.setLineDash([]);
       if (l.on) { const p = (t * 0.5 + hash(l.b.id)) % 1; c.beginPath(); c.arc(l.a.x + (l.b.x - l.a.x) * p, l.a.y + (l.b.y - l.a.y) * p, 2, 0, TAU); c.fillStyle = '#fff'; c.fill(); }
     });
     graph.nodes.forEach(n => {
-      const col = n.type === 'host' ? css('--purple') : TYPE_COL[n.type](), hot = graph.hover === n || graph.drag === n || state.selected === n.id;
+      const col = n.type === 'host' ? css('--purple') : colorFor(n.type), hot = graph.hover === n || graph.drag === n || state.selected === n.id, linking = graph.linkFrom === n;
       const glow = c.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * (hot ? 4 : 2.6)); glow.addColorStop(0, col + '88'); glow.addColorStop(1, col + '00');
       c.fillStyle = glow; c.beginPath(); c.arc(n.x, n.y, n.r * (hot ? 4 : 2.6), 0, TAU); c.fill();
-      c.beginPath(); c.arc(n.x, n.y, n.r, 0, TAU); c.fillStyle = col; c.fill(); c.strokeStyle = '#fff'; c.lineWidth = hot ? 2 : 1; c.stroke();
+      c.beginPath(); c.arc(n.x, n.y, n.r, 0, TAU); c.fillStyle = col; c.fill(); c.strokeStyle = linking ? css('--yellow') : '#fff'; c.lineWidth = linking ? 3 : (hot ? 2 : 1); c.stroke();
+      if (!n.auto && n.id !== 'host') { c.strokeStyle = 'rgba(255,255,255,.6)'; c.lineWidth = 1; c.setLineDash([2, 2]); c.beginPath(); c.arc(n.x, n.y, n.r + 4, 0, TAU); c.stroke(); c.setLineDash([]); }
       if (n.type === 'host') { c.fillStyle = '#fff'; c.font = 'bold 10px ' + getComputedStyle(document.body).fontFamily; c.textAlign = 'center'; c.fillText(String(n.label).slice(0, 14), n.x, n.y + n.r + 12); }
       else if (hot || n.type === 'lan') { c.fillStyle = 'rgba(230,245,235,.85)'; c.font = '9.5px ' + getComputedStyle(document.body).fontFamily; c.textAlign = 'center'; c.fillText(String(n.label).slice(0, 16), n.x, n.y + n.r + 11); }
     });
     const tip = $('#deckGraphTip');
-    if (graph.hover && graph.hover.ref) { const d = graph.hover.ref; tip.hidden = false; tip.innerHTML = `<b>${esc(d.name)}</b><span>${d.type.toUpperCase()} · ${esc(d.sub)}</span>`; tip.style.left = clamp(graph.hover.x + 14, 4, w - 170) + 'px'; tip.style.top = clamp(graph.hover.y - 8, 4, h - 50) + 'px'; } else tip.hidden = true;
+    if (graph.hover && graph.hover.ref) {
+      const d = graph.hover.ref; tip.hidden = false; tip.innerHTML = `<b>${esc(d.name)}</b><span>${d.type.toUpperCase()} · ${esc(d.sub)}</span>`;
+      tip.style.left = clamp(graph.hover.x + 14, 4, w - 170) + 'px'; tip.style.top = clamp(graph.hover.y - 8, 4, h - 50) + 'px';
+    } else if (graph.hover && !graph.hover.auto && graph.hover.id !== 'host') {
+      tip.hidden = false; tip.innerHTML = `<b>${esc(graph.hover.label)}</b><span>custom node · dblclick to rename · right-click to remove</span>`;
+      tip.style.left = clamp(graph.hover.x + 14, 4, w - 170) + 'px'; tip.style.top = clamp(graph.hover.y - 8, 4, h - 50) + 'px';
+    } else tip.hidden = true;
   }
 
   /* ------------------------------------------------------------------ tables, rings, timeline, pulse */
@@ -374,9 +437,29 @@
     rd.addEventListener('pointerleave', () => { radar.hover = null; });
     rd.addEventListener('click', () => { if (radar.hover) { state.selected = state.selected === radar.hover.d.id ? null : radar.hover.d.id; renderDevices(); } });
     const gr = $('#deckGraph'); const pick = p => graph.nodes.find(n => Math.hypot(n.x - p.x, n.y - p.y) < n.r + 8);
-    gr.addEventListener('pointerdown', e => { const n = pick(rel(e, gr)); if (n && !n.fixed) { graph.drag = n; gr.setPointerCapture(e.pointerId); } });
-    gr.addEventListener('pointermove', e => { const p = rel(e, gr); if (graph.drag) { graph.drag.x = p.x; graph.drag.y = p.y; graph.drag.vx = graph.drag.vy = 0; } graph.hover = pick(p) || null; gr.style.cursor = graph.hover ? (graph.hover.fixed ? 'default' : 'grab') : 'default'; });
-    gr.addEventListener('pointerup', () => { graph.drag = null; }); gr.addEventListener('pointerleave', () => { graph.hover = null; });
+    gr.addEventListener('pointerdown', e => { const p = rel(e, gr); graph.downPos = p; const n = pick(p); if (n && !n.fixed) { graph.drag = n; gr.setPointerCapture(e.pointerId); } });
+    gr.addEventListener('pointermove', e => { const p = rel(e, gr); if (graph.drag) { graph.drag.x = p.x; graph.drag.y = p.y; graph.drag.vx = graph.drag.vy = 0; } graph.hover = pick(p) || null; gr.style.cursor = graph.linkMode ? 'crosshair' : (graph.hover ? (graph.hover.fixed ? 'default' : 'grab') : 'default'); });
+    gr.addEventListener('pointerup', e => {
+      const p = rel(e, gr); const moved = graph.downPos ? Math.hypot(p.x - graph.downPos.x, p.y - graph.downPos.y) : 999; graph.drag = null;
+      if (moved < 6 && graph.linkMode) {
+        const n = pick(p);
+        if (n) {
+          if (!graph.linkFrom) graph.linkFrom = n;
+          else if (graph.linkFrom.id !== n.id) { addCustomEdge(graph.linkFrom.id, n.id); graph.linkFrom = null; }
+          else graph.linkFrom = null;
+        }
+      }
+    });
+    gr.addEventListener('pointerleave', () => { graph.hover = null; });
+    gr.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      const n = pick(rel(e, gr));
+      if (n && !n.auto && n.id !== 'host' && confirm(`Remove node "${n.label}" and its links?`)) { removeCustomNode(n.id); if (graph.linkFrom === n) graph.linkFrom = null; }
+    });
+    gr.addEventListener('dblclick', e => {
+      const n = pick(rel(e, gr));
+      if (n && !n.auto && n.id !== 'host') { const nl = prompt('Rename node', n.label); if (nl && nl.trim()) renameCustomNode(n.id, nl.trim()); }
+    });
   }
 
   /* ------------------------------------------------------------------ loop */
@@ -404,6 +487,6 @@
       { g: '◈', grp: 'Deck', name: 'Go to Deck', hint: '2', run: () => { if (typeof showTab === 'function') showTab('deck'); } }
     ]);
   }
-  window.spac3Deck = { setDemo: v => { demo = !!v; store.set('deckDemo', demo ? '1' : '0'); refreshAll(true); }, state };
+  window.spac3Deck = { setDemo: v => { demo = !!v; store.set('deckDemo', demo ? '1' : '0'); refreshAll(true); }, state, graph };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

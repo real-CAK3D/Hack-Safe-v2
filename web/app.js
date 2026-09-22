@@ -48,23 +48,17 @@ function weatherIcon(summary='', night=false) { const s=String(summary||'').toLo
 function tempClass(c) { if(c == null || Number.isNaN(Number(c))) return 'temp-ok'; if(c >= 75) return 'temp-hot'; if(c >= 65) return 'temp-warm'; if(c <= 45) return 'temp-cool'; return 'temp-ok'; }
 function sensorTempClass(f) { if(f == null || Number.isNaN(Number(f))) return 'temp-ok'; if(f >= 88) return 'temp-hot'; if(f >= 78) return 'temp-warm'; if(f <= 60) return 'temp-cool'; return 'temp-ok'; }
 function spark(values) { const max=Math.max(...values,1), min=Math.min(...values,0); const chars='▁▂▃▄▅▆▇█'; return values.map(v=>chars[Math.round(((v-min)/(max-min||1))*(chars.length-1))]).join(''); }
-function wavePath(values, w=260, h=58, lo=0, hi=100) {
-  const list = values.length ? values : [0];
-  const span = Math.max(1, hi - lo);
-  return list.map((v,i) => {
-    const x = list.length === 1 ? 0 : (i / (list.length - 1)) * w;
-    const y = h - ((clamp(v, lo, hi) - lo) / span) * h;
-    return `${i?'L':'M'}${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-}
+let waveSeq=0;
+window.__waveRegistry = window.__waveRegistry || new Map();
 function liveWave(label, values, value, color='var(--green)', lo=0, hi=100) {
-  const path = wavePath(values, 260, 58, lo, hi);
-  const fill = `${path} L260,58 L0,58 Z`;
+  const id=`wv${waveSeq++}`;
   const nums=(values||[]).map(Number).filter(Number.isFinite);
+  window.__waveRegistry.set(id, {values:nums, color, lo, hi});
   const latest=nums.length?nums[nums.length-1]:0, prev=nums.length>1?nums[nums.length-2]:latest;
   const trend=latest>prev+.5?'▲':latest<prev-.5?'▼':'◆';
   const min=nums.length?Math.min(...nums).toFixed(0):'--', max=nums.length?Math.max(...nums).toFixed(0):'--';
-  return `<div class="wave-card sec-wave" style="--wave:${color}"><div class="wave-head"><span>${label}</span><b>${value}</b></div><svg class="wave" viewBox="0 0 260 58" preserveAspectRatio="none" aria-label="${label} live line graph"><path class="wave-fill" d="${fill}"></path><path class="wave-line" d="${path}"></path></svg><div class="wave-meta"><span>${trend} live</span><span>min ${min}</span><span>max ${max}</span><span>${spark(nums.slice(-16))}</span></div></div>`;
+  const avg=nums.length?(nums.reduce((a,b)=>a+b,0)/nums.length).toFixed(0):'--';
+  return `<div class="wave-card sec-wave tc-card" style="--wave:${color}"><div class="wave-head"><span>${label}</span><b>${value}</b></div><div class="tc-wrap"><canvas class="tc-canvas" id="${id}" aria-label="${escapeHtml(label)} live line graph"></canvas><div class="tc-tip" data-for="${id}" hidden></div></div><div class="wave-meta"><span>${trend} live</span><span>min ${min}</span><span>avg ${avg}</span><span>max ${max}</span></div></div>`;
 }
 function pushHist(arr, val, max=48){ arr.push(Number(val)||0); while(arr.length>max) arr.shift(); return arr; }
 function bytesPerSec(n){ n=Number(n)||0; const u=['B/s','KB/s','MB/s','GB/s']; let i=0; while(n>=1024&&i<u.length-1){n/=1024;i++;} return `${n>=10?n.toFixed(0):n.toFixed(1)} ${u[i]}`; }
@@ -128,7 +122,7 @@ function showTab(name) {
   if (name === 'settings' && !document.getElementById('settingsJson').value) loadSettings();
   if (name === 'lab') { renderLabToys(lastStatus?.lab_toys||{}, lastStatus||{}); showLabSection(activeLabSection || 'quick'); }
   else { document.body.dataset.labSection = ''; }
-  if (name === 'externals') { refreshCameraFrame(true); renderGodsEyeStatus(); renderExternals(lastStatus?.externals||{}); }
+  if (name === 'externals') { refreshCameraFrame(true); renderExternals(lastStatus?.externals||{}); }
 }
 function showLabSection(section='quick'){
   activeLabSection = section;
@@ -139,29 +133,6 @@ function showLabSection(section='quick'){
     card.classList.toggle('active', on);
     card.hidden = !on;
   });
-}
-function renderGodsEyeStatus(){
-  const el=document.getElementById('godseyeStatus');
-  if(!el) return;
-  const tail=lastStatus?.tailscale_url ? `TAILNET ${lastStatus.tailscale_url}` : 'TAILNET dashboard only';
-  el.textContent = [
-    'God\'s Eye View launch bay ready.',
-    'Live route: /godseye-live/  //  Static fallback: /godseye-app/index.html',
-    `${tail}`,
-    'Key policy: Google Maps browser key is client-exposed by design; restrict it in Google Cloud.',
-    'Tor Browser: on hold by CAK3D so Tailscale/VPN recovery stays clean.'
-  ].join('\n');
-}
-function openGodsEye(){
-  renderGodsEyeStatus();
-  const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '') || window.matchMedia?.('(max-width: 760px)')?.matches;
-  const cacheBust = `v=${Date.now()}`;
-  const route = mobile ? `/godseye-app/?${cacheBust}` : `/godseye-live/?${cacheBust}`;
-  window.open(route, '_blank', 'noopener,noreferrer');
-}
-function openGodsEyeStatic(){
-  renderGodsEyeStatus();
-  window.open(`/godseye-app/?v=${Date.now()}`, '_blank', 'noopener,noreferrer');
 }
 function setTicker(sys, wifi, sens, vpn, controls) {
   const gps=sens?.gps||{}, indoor=sens?.indoor||{}, mem=sys.memory||{};
@@ -468,6 +439,7 @@ function safeRender(name, fn){
 async function refresh(){
   if(refreshBusy){ refreshQueued = true; return; }
   refreshBusy = true;
+  waveSeq = 0;  // call order is deterministic per refresh, so ids (and the registry) stay stable across renders
   try {
     const res=await fetch('/api/status',{cache:'no-store'}); const s=await res.json(); lastStatus=s; currentConfig=s.config;
     document.getElementById('clock').textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
@@ -558,7 +530,7 @@ function renderCydSettingsPanel(cyd={}){
   const pending=settings.pending_command;
   const pendingText=pending?`pending ${escapeHtml(pending.action||'command')} → ${escapeHtml(pending.menu||'menu')}`:(settings.last_ack?`last ack ${escapeHtml(JSON.stringify(settings.last_ack).slice(0,80))}`:'ready');
   const msg=cydBuddyActionStatus?`<div class="scanline-note">${escapeHtml(cydBuddyActionStatus)}</div>`:'';
-  return `<div class="cyd-settings-console"><div class="cyd-settings-head"><div><h3>Buddy Settings Console</h3><p>Open Buddy settings menus/submenus from Spac3-Gh0st while docked. Commands ride in the CYD telemetry payload; no passwords or secrets are stored.</p></div><span>${pendingText}</span></div><div class="cyd-menu-buttons">${menuButtons}</div><div class="cyd-settings-form"><label>Brightness<input id="cydBrightness" type="range" min="5" max="100" value="${escapeHtml(display.brightness??70)}"></label><label>Sleep seconds<input id="cydSleep" type="number" min="0" max="3600" value="${escapeHtml(display.sleep_s??60)}"></label><label>Theme<select id="cydTheme"><option ${display.theme==='matrix'?'selected':''}>matrix</option><option ${display.theme==='night'?'selected':''}>night</option><option ${display.theme==='amber'?'selected':''}>amber</option><option ${display.theme==='mono'?'selected':''}>mono</option></select></label><label>Mood<select id="cydMood"><option ${face.mood==='auto'?'selected':''}>auto</option><option ${face.mood==='sleepy'?'selected':''}>sleepy</option><option ${face.mood==='curious'?'selected':''}>curious</option><option ${face.mood==='guardian'?'selected':''}>guardian</option><option ${face.mood==='party'?'selected':''}>party</option></select></label><label>Phrase scroll ms<input id="cydScroll" type="number" min="20" max="500" value="${escapeHtml(phrases.scroll_ms??80)}"></label><label class="cyd-check"><input id="cydDiagnostics" type="checkbox" ${advanced.diagnostics?'checked':''}> Diagnostics overlay</label><button onclick="cydBuddySaveSettings()">Save Buddy Settings</button><button onclick="cydBuddyOpenMenu('home')">Back to Buddy Home</button></div>${msg}</div>`;
+  return `<div class="cyd-settings-console"><div class="cyd-settings-head"><div><h3>Buddy Settings Console</h3><p>Open Buddy settings menus/submenus from Spac3-Gh0st while docked. Commands ride in the CYD telemetry payload; no passwords or secrets are stored.</p></div><span>${pendingText}</span></div><div class="cyd-menu-buttons">${menuButtons}</div><div class="cyd-settings-form"><label>Backlight %<input id="cydBrightness" type="range" min="5" max="100" value="${escapeHtml(display.brightness??100)}"></label><label>Sleep after (sec)<input id="cydSleep" type="number" min="30" max="3600" step="30" value="${escapeHtml(display.sleep_s??1800)}"></label><label>Eye theme<select id="cydTheme"><option value="default" ${!display.theme||display.theme==='default'?'selected':''}>default (mood-driven)</option><option value="matrix" ${display.theme==='matrix'?'selected':''}>matrix (green/lime)</option><option value="night" ${display.theme==='night'?'selected':''}>night (navy)</option><option value="amber" ${display.theme==='amber'?'selected':''}>amber</option><option value="mono" ${display.theme==='mono'?'selected':''}>mono (white)</option></select></label><label>Mood<select id="cydMood">${["auto","curious","happy","surprised","sleepy","angry","sad","excited","love","suspicious","stoner","drunk","hippy","bored","restless","anxious"].map(m=>`<option value="${m}" ${((face.mood||'auto')===m)?'selected':''}>${m}</option>`).join('')}</select></label><label>Personality<select id="cydPersonality">${["sassy","sweet","rude","nerdy","chill","chaotic"].map(p=>`<option value="${p}" ${((face.personality||'sassy')===p)?'selected':''}>${p}</option>`).join('')}</select></label><label>Phrase scroll ms<input id="cydScroll" type="number" min="50" max="600" value="${escapeHtml(phrases.scroll_ms??140)}"></label><label class="cyd-check"><input id="cydSdLookup" type="checkbox" ${phrases.sd_lookup?'checked':''}> Use SD phrase bank (off = faster built-in phrases)</label><button onclick="cydBuddySaveSettings()">Save Buddy Settings</button><button onclick="cydBuddyOpenMenu('home')">Back to Buddy Home</button></div><p class="mini">Mood set to anything other than auto holds for ~10 minutes on the Buddy, matching its own manual-mood behavior.</p>${msg}</div>`;
 }
 
 async function cydBuddyOpenMenu(menu){
@@ -568,9 +540,13 @@ async function cydBuddyOpenMenu(menu){
   refresh();
 }
 async function cydBuddySaveSettings(){
-  const values={display:{brightness:document.getElementById('cydBrightness')?.value,sleep_s:document.getElementById('cydSleep')?.value,theme:document.getElementById('cydTheme')?.value},face:{mood:document.getElementById('cydMood')?.value,animation:'auto',personality:'chill'},phrases:{scroll_ms:document.getElementById('cydScroll')?.value},advanced:{diagnostics:!!document.getElementById('cydDiagnostics')?.checked}};
+  const values={
+    display:{brightness:Number(document.getElementById('cydBrightness')?.value)||100, sleep_s:Number(document.getElementById('cydSleep')?.value)||1800, theme:document.getElementById('cydTheme')?.value||'default'},
+    face:{mood:document.getElementById('cydMood')?.value||'auto', personality:document.getElementById('cydPersonality')?.value||'sassy'},
+    phrases:{scroll_ms:Number(document.getElementById('cydScroll')?.value)||140, sd_lookup:!!document.getElementById('cydSdLookup')?.checked}
+  };
   cydBuddyActionStatus='Saving CYD Buddy settings...';
-  try{ const r=await fetch('/api/cyd/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'save',menu:'display',values})}); const d=await r.json(); cydBuddyActionStatus=d.ok?'CYD Buddy settings queued. Buddy will apply them on next telemetry poll.':`CYD Buddy settings failed: ${d.error||r.status}`; }
+  try{ const r=await fetch('/api/cyd/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'save',menu:'display',values})}); const d=await r.json(); cydBuddyActionStatus=d.ok?'CYD Buddy settings queued. Buddy applies them on its next telemetry poll (every few seconds while docked).':`CYD Buddy settings failed: ${d.error||r.status}`; }
   catch(e){ cydBuddyActionStatus=`CYD Buddy settings failed: ${e}`; }
   refresh();
 }
@@ -682,6 +658,24 @@ function renderCyberTestKit(s={}){
   ];
   el.innerHTML=kit.map(k=>`<button class="cyber-kit-action cyber-${k.id}" onclick="${k.action}"><b>${escapeHtml(k.label)}</b><span>${escapeHtml(k.state)}</span><small>${escapeHtml(k.note)}</small></button>`).join('') + `<div class="scanline-note cyber-kit-policy">Pwnagotchi-on-steroids mode: fast faces + home/owned-lab controls. Blocked here: deauth, cracking, credential capture, unknown tag cloning, IR replay/transmit.</div>`;
 }
+let weatherKeyStatusText='Key status: tap Recheck Key to verify.';
+let weatherKeyChecking=false;
+async function recheckWeatherKey(){
+  weatherKeyChecking=true;
+  const el=document.getElementById('weatherKeyStatus'); if(el) el.textContent='Checking OpenWeather key...';
+  try{
+    const r=await fetch('/api/weather/keycheck',{cache:'no-store'});
+    const d=await r.json();
+    if(!d.configured) weatherKeyStatusText=`No key found. ${d.note||''}`;
+    else if(d.valid===true) weatherKeyStatusText=`Key ${d.masked} works (radar tiles enabled).`;
+    else if(d.valid===false) weatherKeyStatusText=`Key ${d.masked} was rejected: ${d.note||'unauthorized'}`;
+    else weatherKeyStatusText=`Key ${d.masked} found, but could not verify: ${d.note||'no network reply'}`;
+    if(window.v2Toast) v2Toast('OpenWeather key', weatherKeyStatusText, d.valid===true?'ok':(d.configured?'warn':'info'), 5200);
+  }catch(e){ weatherKeyStatusText=`Recheck failed: ${e.message||e}`; }
+  weatherKeyChecking=false;
+  await fetch('/api/status/slow?force=1',{cache:'no-store'}).catch(()=>{});
+  await refresh();
+}
 function renderWeatherSim(weather={}, light={}){
   const el=document.getElementById('weatherSimViz'); if(!el) return;
   const day=weatherDayState(weather);
@@ -700,6 +694,7 @@ function renderWeatherSim(weather={}, light={}){
   const layers=(weather.radar?.layers||['precipitation_new','clouds_new','wind_new']).slice(0,3);
   const tiles=weather.radar?.configured && xy ? layers.map((layer,i)=>`<img class="radar-layer radar-layer-${i}" src="/api/weather/tile/${layer}/${xy.z}/${xy.x}/${xy.y}.png" alt="${layer} weather radar tile">`).join('') : '';
   const radarNote=weather.radar?.configured ? `OpenWeather radar: ${layers.join(' / ')}` : 'OpenWeather key missing // simulated sweep radar';
+  const keyStatusHtml=`<span id="weatherKeyStatus">${escapeHtml(weatherKeyStatusText)}</span> <button class="tiny-btn" onclick="recheckWeatherKey()">${weatherKeyChecking?'Checking…':'Recheck Key'}</button>`;
   const phase=day.isNight?'night':'day';
   const temp=Number(weather.tempF), hum=Number(weather.humidity), wind=Number(weather.windMph||0), rainChance=Math.max(...(weather.forecast||[]).slice(0,3).map(d=>Number(d.chanceRain||0)),0);
   if(Number.isFinite(temp)) pushHist(weatherTempHist, clamp((temp+10)/120*100));
@@ -710,7 +705,7 @@ function renderWeatherSim(weather={}, light={}){
   el.className=`weather-sim weather-state-${cls} weather-${phase}`;
   el.style.setProperty('--sun-x', `${12 + day.progress*.76}%`);
   el.style.setProperty('--sun-y', `${62 - Math.sin((day.progress/100)*Math.PI)*44}%`);
-  el.innerHTML=`<div class="weather-sky"><div class="weather-stars">${stars}</div><div class="weather-sun"></div><div class="weather-moon"></div><div class="weather-cloud c1"></div><div class="weather-cloud c2"></div><div class="weather-rain">${drops}</div><div class="weather-lightning"></div><div class="weather-ground"></div></div><div class="weather-readout sec-readout"><div class="sec-summary ${wxRisk.toLowerCase()}"><b>WEATHER OPS ${wxRisk}</b><span>${weatherIcon(summary, day.isNight)} ${escapeHtml(summary)} // ${weather.available?(weather.tempF ?? 'n/a')+'°F':'waiting'}</span></div><div class="metric-grid">${metricCell('TEMP', weather.available?`${weather.tempF ?? 'n/a'}°F`:'n/a', summary)}${metricCell('HUMIDITY', weather.available?`${weather.humidity ?? 'n/a'}%`:'n/a', 'outside weather')}${metricCell('WIND', weather.available?`${weather.windMph ?? 'n/a'} mph`:'n/a', `rain risk ${rainChance}%`)}${metricCell('LIGHT', light.available?`${light.lux} lux`:'n/a', 'room sensor')}</div>${wxTable}</div><div class="weather-radar"><div class="radar-tile">${tiles}<i></i><b></b><span></span></div><small>${radarNote}</small></div><div class="forecast-strip">${forecast||'<div><b>forecast</b><span>waiting</span><small>weather cache warmup</small></div>'}</div><div class="weather-waves">${liveWave('OUTSIDE TEMP', weatherTempHist, Number.isFinite(temp)?`${temp.toFixed(1)}°F`:'n/a', temp>=88?'var(--red)':temp<=35?'var(--cyan)':'var(--green)')}${liveWave('HUMIDITY', weatherHumidityHist, Number.isFinite(hum)?`${hum.toFixed(0)}%`:'n/a', 'var(--blue)')}${liveWave('WIND', weatherWindHist, `${wind||0} mph`, wind>=25?'var(--yellow)':'var(--purple)')}</div>`;
+  el.innerHTML=`<div class="weather-sky"><div class="weather-stars">${stars}</div><div class="weather-sun"></div><div class="weather-moon"></div><div class="weather-cloud c1"></div><div class="weather-cloud c2"></div><div class="weather-rain">${drops}</div><div class="weather-lightning"></div><div class="weather-ground"></div></div><div class="weather-readout sec-readout"><div class="sec-summary ${wxRisk.toLowerCase()}"><b>WEATHER OPS ${wxRisk}</b><span>${weatherIcon(summary, day.isNight)} ${escapeHtml(summary)} // ${weather.available?(weather.tempF ?? 'n/a')+'°F':'waiting'}</span></div><div class="metric-grid">${metricCell('TEMP', weather.available?`${weather.tempF ?? 'n/a'}°F`:'n/a', summary)}${metricCell('HUMIDITY', weather.available?`${weather.humidity ?? 'n/a'}%`:'n/a', 'outside weather')}${metricCell('WIND', weather.available?`${weather.windMph ?? 'n/a'} mph`:'n/a', `rain risk ${rainChance}%`)}${metricCell('LIGHT', light.available?`${light.lux} lux`:'n/a', 'room sensor')}</div>${wxTable}</div><div class="weather-radar"><div class="radar-tile">${tiles}<i></i><b></b><span></span></div><small>${radarNote}</small><small class="weather-key-row">${keyStatusHtml}</small></div><div class="forecast-strip">${forecast||'<div><b>forecast</b><span>waiting</span><small>weather cache warmup</small></div>'}</div><div class="weather-waves">${liveWave('OUTSIDE TEMP', weatherTempHist, Number.isFinite(temp)?`${temp.toFixed(1)}°F`:'n/a', temp>=88?'var(--red)':temp<=35?'var(--cyan)':'var(--green)')}${liveWave('HUMIDITY', weatherHumidityHist, Number.isFinite(hum)?`${hum.toFixed(0)}%`:'n/a', 'var(--blue)')}${liveWave('WIND', weatherWindHist, `${wind||0} mph`, wind>=25?'var(--yellow)':'var(--purple)')}</div>`;
 }
 function renderGlobalMap(s){
   const el=document.getElementById('globalMapViz'); if(!el) return;
@@ -814,6 +809,7 @@ function renderLabToys(lab={}, status={}){
   renderPiAware(lab.piaware||{});
   renderCompanionFirmware(status);
   renderHardwareDocks(lab.hardware_docks||{});
+  renderFlipperZero(lab.flipper||{});
 }
 
 
@@ -860,13 +856,26 @@ function renderHardwareDocks(hw={}){
   const cards=docks.map(d=>{
     const cand=[...(d.candidates||[]),...(d.serials||[]),...(d.devices||[])].slice(0,4).map(x=>`<code>${escapeHtml(x)}</code>`).join('') || '<small>no direct device match yet</small>';
     const blocked=(d.blocked_actions||[]).slice(0,4).map(escapeHtml).join(', ');
-    const action=d.id==='pwnagotchi-zero2'?`showTab('lab'); setTimeout(()=>document.querySelector('.lab-workflows-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)`:d.id.includes('esp32')||d.id.includes('bruce')?`companionAction('bruce','detect')`:d.id==='sdr-receiver'?`labSoftwareAction('sdrsuite','check')`:d.id==='ir-receiver'?`irAction('detect')`:d.id==='nfc-rfid-radio'?`nfcRfidAction('detect')`:`showTab('lab'); setTimeout(()=>document.querySelector('.safety-boundary-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)`;
+    const action=d.id==='pwnagotchi-zero2'?`showTab('lab'); setTimeout(()=>document.querySelector('.lab-workflows-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)`:d.id==='cyd-buddy'?`showTab('externals'); setTimeout(()=>document.querySelector('.cyd-buddy-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)`:d.id.includes('esp32')||d.id.includes('bruce')?`companionAction('bruce','detect')`:d.id==='sdr-receiver'?`labSoftwareAction('sdrsuite','check')`:d.id==='ir-receiver'?`irAction('detect')`:d.id==='nfc-rfid-radio'?`nfcRfidAction('detect')`:`showTab('lab'); setTimeout(()=>document.querySelector('.safety-boundary-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)`;
     const extra=d.id==='nfc-rfid-radio'?`<button onclick="nfcRfidAction('read-once')">Read Owned Tag</button><button onclick="nfcRfidWriteOwned()">Write Owned Tag</button>`:d.id==='ir-receiver'?`<button onclick="irAction('receive-once')">Receive IR</button>`:'';
     return `<div class="companion-card dock-card ${d.detected?'installed':'missing'}"><div class="companion-head"><b>${escapeHtml(d.label)}</b><span>${d.detected?'detected':'waiting'}</span></div><p>${escapeHtml(d.readiness||'')}</p><div class="companion-meta"><span>${escapeHtml(d.kind||'hardware')}</span><span>${escapeHtml(d.home||'Lab')}</span></div><div class="dock-candidates">${cand}</div><div class="companion-actions"><button onclick="${action}">Detect / Open</button>${extra}</div><small>guarded: ${blocked}</small></div>`;
   }).join('') || '<div class="scanline-note">No hardware dock status yet.</div>';
   el.innerHTML=`<div class="spicy-banner"><b>PLUG-IN DOCKS</b><span>${escapeHtml(hw.policy||'detect/readiness only')}</span><span>serials: ${(hw.serial_candidates||[]).map(escapeHtml).join(', ')||'none'}</span><span>esptool: ${hw.esptool?'ready':'missing'}</span></div><div class="lab-tool-grid">${tools}</div>${cards}`;
 }
 
+function renderFlipperZero(fl={}){
+  const el=document.getElementById('flipperViz'); if(!el) return;
+  const tools=Object.entries(fl.tools||{}).map(([k,v])=>`<span>${escapeHtml(k)}: ${v?'yes':'no'}</span>`).join('');
+  const cards=(fl.features||[]).map(f=>`<div class="companion-card dock-card ${f.enabled?'installed':'missing'}"><div class="companion-head"><b>${escapeHtml(f.label)}</b><span>${f.enabled?'enabled':'disabled'}</span></div><p>${escapeHtml(f.description||'')}</p><div class="companion-meta"><span>${escapeHtml(f.safe_mode||'reference only')}</span></div><div class="companion-actions"><button onclick="flipperFeatureAction('${escapeHtml(f.id)}','${f.enabled?'disable':'enable'}')">${f.enabled?'Disable':'Enable'}</button></div></div>`).join('') || '<div class="scanline-note">No Flipper-inspired features defined.</div>';
+  const usb=(fl.usb_matches||[]).slice(0,3).map(x=>`<code>${escapeHtml(x)}</code>`).join('') || '<small>no Flipper USB match yet</small>';
+  const blocked=(fl.blocked_actions||[]).map(escapeHtml).join(', ');
+  el.innerHTML=`<div class="spicy-banner"><b>${fl.connected?'FLIPPER DETECTED':'NO FLIPPER DOCKED'}</b><span>${escapeHtml(fl.mode||'safe dock / disabled-by-default')}</span></div><div class="lab-tool-grid">${tools}</div><div class="dock-candidates">${usb}</div>${cards}<small>guarded: ${blocked}</small>`;
+}
+async function flipperFeatureAction(feature, action){
+  const d=await postJson('/api/lab/flipper/action',{feature, action});
+  showAction('flipperControl', d);
+  renderFlipperZero(d.flipper||{});
+}
 async function nfcRfidAction(action){
   if(action==='read-once' && !confirm('Place an owned NFC/RFID tag on the CrowPi RC522 reader, then press OK. Spac3-Gh0st will wait up to 8 seconds and read once.')) return;
   const d=await postJson('/api/lab/nfc-rfid/action',{action});

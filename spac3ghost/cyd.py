@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import subprocess
 import time
@@ -18,6 +19,9 @@ LEASE_PATHS = (
 )
 SSID = 'Wu-Tang LAN'
 HOTSPOT_IP = '10.42.7.1'
+# Matches the CYD-Buddy firmware's own compiled-in default (spac3Host in main.cpp); override
+# with SPAC3GHOST_PORT if this dashboard runs on a different port than the firmware expects.
+DASHBOARD_PORT = os.environ.get('SPAC3GHOST_PORT', '8766')
 TELEMETRY_PATH = '/api/cyd/telemetry'
 HEARTBEAT_PATH = '/api/cyd/heartbeat'
 
@@ -34,10 +38,9 @@ MENU_DEFS = [
 MENU_IDS = {m['id'] for m in MENU_DEFS}
 DEFAULT_SETTINGS = {
     'active_menu': 'home',
-    'display': {'brightness': 70, 'sleep_s': 60, 'theme': 'matrix'},
-    'face': {'mood': 'auto', 'animation': 'auto', 'personality': 'chill'},
-    'phrases': {'scroll_ms': 80, 'sd_lookup': False},
-    'advanced': {'diagnostics': False},
+    'display': {'brightness': 100, 'sleep_s': 1800, 'theme': 'default'},
+    'face': {'mood': 'auto', 'personality': 'sassy'},
+    'phrases': {'scroll_ms': 140, 'sd_lookup': False},
     'pending_command': None,
     'updated_at': 0,
 }
@@ -176,22 +179,26 @@ def update_cyd_settings(payload: Dict[str, Any]) -> Dict[str, Any]:
         display = values.get('display') if isinstance(values.get('display'), dict) else {}
         face = values.get('face') if isinstance(values.get('face'), dict) else {}
         phrases = values.get('phrases') if isinstance(values.get('phrases'), dict) else {}
-        advanced = values.get('advanced') if isinstance(values.get('advanced'), dict) else {}
+        valid_moods = {'auto', 'curious', 'happy', 'surprised', 'sleepy', 'angry', 'sad', 'excited',
+                       'love', 'suspicious', 'stoner', 'drunk', 'hippy', 'bored', 'restless', 'anxious'}
+        valid_personalities = {'sassy', 'sweet', 'rude', 'nerdy', 'chill', 'chaotic'}
+        valid_themes = {'default', 'matrix', 'night', 'amber', 'mono'}
+        mood = str(face.get('mood') or state.get('face', {}).get('mood') or 'auto').strip().lower()
+        personality = str(face.get('personality') or state.get('face', {}).get('personality') or 'sassy').strip().lower()
+        theme = str(display.get('theme') or state.get('display', {}).get('theme') or 'default').strip().lower()
         state['display'] = {
-            'brightness': _clamp_int(display.get('brightness'), 5, 100, state.get('display', {}).get('brightness', 70)),
-            'sleep_s': _clamp_int(display.get('sleep_s'), 0, 3600, state.get('display', {}).get('sleep_s', 60)),
-            'theme': str(display.get('theme') or state.get('display', {}).get('theme') or 'matrix')[:32],
+            'brightness': _clamp_int(display.get('brightness'), 5, 100, state.get('display', {}).get('brightness', 100)),
+            'sleep_s': _clamp_int(display.get('sleep_s'), 30, 3600, state.get('display', {}).get('sleep_s', 1800)),
+            'theme': theme if theme in valid_themes else 'default',
         }
         state['face'] = {
-            'mood': str(face.get('mood') or state.get('face', {}).get('mood') or 'auto')[:32],
-            'animation': str(face.get('animation') or state.get('face', {}).get('animation') or 'auto')[:32],
-            'personality': str(face.get('personality') or state.get('face', {}).get('personality') or 'chill')[:32],
+            'mood': mood if mood in valid_moods else 'auto',
+            'personality': personality if personality in valid_personalities else 'sassy',
         }
         state['phrases'] = {
-            'scroll_ms': _clamp_int(phrases.get('scroll_ms'), 20, 500, state.get('phrases', {}).get('scroll_ms', 80)),
+            'scroll_ms': _clamp_int(phrases.get('scroll_ms'), 50, 600, state.get('phrases', {}).get('scroll_ms', 140)),
             'sd_lookup': bool(phrases.get('sd_lookup', state.get('phrases', {}).get('sd_lookup', False))),
         }
-        state['advanced'] = {'diagnostics': bool(advanced.get('diagnostics', state.get('advanced', {}).get('diagnostics', False)))}
     else:
         return {'ok': False, 'error': f'unsupported CYD settings action: {action}'}
     state['pending_command'] = {
@@ -382,9 +389,9 @@ def cyd_status(include_settings: bool = True) -> Dict[str, Any]:
         'ai_state': state.get('ai_state') or {},
         'hotspot': conn,
         'leases': leases,
-        'telemetry_url': f'http://{HOTSPOT_IP}:8766{TELEMETRY_PATH}',
-        'heartbeat_url': f'http://{HOTSPOT_IP}:8766{HEARTBEAT_PATH}',
-        'dashboard_url': f'http://{HOTSPOT_IP}:8766/',
+        'telemetry_url': f'http://{HOTSPOT_IP}:{DASHBOARD_PORT}{TELEMETRY_PATH}',
+        'heartbeat_url': f'http://{HOTSPOT_IP}:{DASHBOARD_PORT}{HEARTBEAT_PATH}',
+        'dashboard_url': f'http://{HOTSPOT_IP}:{DASHBOARD_PORT}/',
         'dock_label': 'DOCKED' if connected else ('HOTSPOT READY' if conn.get('active') else 'HOTSPOT OFF'),
     }
     if include_settings:

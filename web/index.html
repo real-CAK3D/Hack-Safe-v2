@@ -109,6 +109,11 @@
           <p class="mini">Readable plug-in docks for Pwnagotchi Zero, Bruce/CYD, ESP32-S3/dev boards, IR, NFC/RFID, and SDR receivers.</p>
           <div id="hardwareDocksViz" class="companion-firmware-grid">Detecting plugged hardware...</div>
         </section>
+        <section class="card lab-status-card flipper-card lab-section lab-section-hardware">
+          <h2>Flipper-Inspired Toys</h2>
+          <p class="mini">Reference/inventory viewers only, disabled by default. No transmit, emulate, BadUSB run, or write actions live here.</p>
+          <div id="flipperViz" class="companion-firmware-grid">Checking for a Flipper/qFlipper dock...</div>
+        </section>
         <section class="card lab-status-card safety-boundary-card lab-section lab-section-safety">
           <h2>Safety Boundaries</h2>
           <p class="mini">Disabled by default. Enable/disable here means readiness/staging only, with used-by and needed-service details.</p>
@@ -125,7 +130,7 @@
       </section>
 
       <section id="tab-externals" class="tab-panel page externals-page vision-layout">
-        <section class="card page-hero"><h2>Externals</h2><p class="mini">Vision, camera feeds, God's Eye, and external Pi/car nodes live together here.</p></section>
+        <section class="card page-hero"><h2>Externals</h2><p class="mini">Vision, camera feeds, and external Pi/car nodes live together here. God's Eye View launches from the Dashboard's Open Tools card.</p></section>
         <section class="card stat-card cyd-buddy-card"><h2>CYD Buddy Dock</h2><p class="mini">Desk-buddy dock over Wu-Tang LAN. Telemetry is event-driven; phrases stay on the Buddy.</p><div id="cydBuddyViz" class="cyd-buddy-viz">Waiting for CYD Buddy...</div></section>
         <section class="card vision-card">
           <h2>Camera Feed</h2>
@@ -144,28 +149,6 @@
         <section class="card"><h2>Vision Status</h2><pre id="visionStatus">Vision checking...</pre></section>
         <section class="card"><h2>YOLO Detections</h2><pre id="visionDetections">No scan yet.</pre></section>
         <section class="card vision-history-card"><h2>Vision History</h2><div id="visionHistoryViz" class="viz-stack">No scans yet.</div></section>
-        <section class="card godseye-hero-card vision-godseye-card">
-          <div class="godseye-orbit" aria-hidden="true"><i></i><i></i><i></i></div>
-          <p class="mini">SEPARATE VISION MODULE // LOCAL OSINT GLOBE // PUBLIC SIGNALS</p>
-          <h2>God's Eye View</h2>
-          <p>God’s Eye lives on the Externals page now, but stays boxed off from the camera/YOLO feed: separate launch bay, separate boundaries, same situational-awareness family.</p>
-          <div class="godseye-actions">
-            <button onclick="openGodsEye()">Open Live Globe</button>
-            <button onclick="openGodsEyeStatic()">Static Fallback</button>
-            <a class="button-link" href="https://github.com/bilawalsidhu/gods-eye-view" target="_blank" rel="noopener noreferrer">Source Repo</a>
-            <a class="button-link" href="https://maptheworld.ai/" target="_blank" rel="noopener noreferrer">Project Home</a>
-          </div>
-          <pre id="godseyeStatus">God's Eye View live mode is proxied through /godseye-live/. Static fallback remains at /godseye-app/index.html.</pre>
-        </section>
-        <section class="card godseye-readiness-card vision-godseye-boundary">
-          <h2>God’s Eye Boundary</h2>
-          <div class="godseye-grid">
-            <div><b>Camera vs globe</b><span>Camera selection, frame refresh, and YOLO stay above. God’s Eye uses its own live/static launch routes.</span></div>
-            <div><b>Network</b><span>Live globe is proxied through /godseye-live/; static fallback is /godseye-app/index.html.</span></div>
-            <div><b>Secrets</b><span>Google Maps browser key is client-exposed by design; restrict it in Google Cloud and keep account secrets out of files/logs.</span></div>
-            <div><b>Tor/VPN</b><span>Tor Browser launch stays on hold so VPN and Tailscale recovery stay clean.</span></div>
-          </div>
-        </section>
         <section class="card externals-nav-card">
           <h2>Externals</h2>
           <div id="externalDeviceTabs" class="external-device-tabs">Loading external nodes...</div>
@@ -231,6 +214,7 @@ Plugin switches write to config.plugins and reload the dashboard backend.</pre>
     </div>
   </div>
   <script src="/app.js?v=20260921-open-tools-toggles"></script>
+  <script src="/charts.js?v=2.3.0"></script>
   <script src="/v2.js?v=2.0.1"></script>
   <script src="/weatherfx.js?v=2.0.1"></script>
   <script src="/deck.js?v=2.2.0"></script>
