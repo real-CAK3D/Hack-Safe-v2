@@ -395,7 +395,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/cyd/telemetry':
             return json_response(self, telemetry_from_status(status_snapshot(wait=False)))
         if path == '/api/mesh/status':
-            return json_response({'meshtastic': meshtastic_status(force=parsed.query in ('force=1', 'refresh=1'))})
+            return json_response(self, {'meshtastic': meshtastic_status(force=parsed.query in ('force=1', 'refresh=1'))})
         if path == '/api/health':
             return json_response(self, health_payload())
         if path == '/api/metrics':
