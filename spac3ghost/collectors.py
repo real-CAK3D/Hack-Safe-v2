@@ -13,6 +13,7 @@ import subprocess
 import time
 import urllib.parse
 import urllib.request
+import glob
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List
@@ -1831,6 +1832,146 @@ def _rf_recommendations(status: Dict[str, Any]) -> List[str]:
     return recs or ['RF posture looks boring in the good way. Keep WPS off and passwords strong.']
 
 
+def _mesh_serial_candidates() -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    seen = set()
+    for pattern in ('/dev/serial/by-id/*', '/dev/ttyACM*', '/dev/ttyUSB*'):
+        for raw in glob.glob(pattern):
+            path = Path(raw)
+            try:
+                resolved = str(path.resolve())
+            except Exception:
+                resolved = str(path)
+            key = resolved or str(path)
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append({
+                'path': str(path),
+                'resolved': resolved,
+                'by_id': str(path).startswith('/dev/serial/by-id/'),
+            })
+    rows.sort(key=lambda r: (not r.get('by_id'), r.get('path', '')))
+    return rows[:12]
+
+
+def _mesh_gateway_config() -> Dict[str, Any]:
+    cfg = load_config()
+    mesh = cfg.get('meshtastic', {}) if isinstance(cfg, dict) else {}
+    if not isinstance(mesh, dict):
+        mesh = {}
+    return {
+        'enabled': bool(mesh.get('enabled', True)),
+        'protocol': str(mesh.get('protocol') or 'meshtastic'),
+        'role': str(mesh.get('role') or 'upstairs gateway / router node'),
+        'region': str(mesh.get('region') or 'US915'),
+        'expected_device': str(mesh.get('expected_device') or 'Elecrow ThinkNode M2 ESP32-S3 SX1262 OLED'),
+        'mqtt_enabled': bool(mesh.get('mqtt_enabled', False)),
+        'mqtt_server': str(mesh.get('mqtt_server') or ''),
+        'serial_port': str(mesh.get('serial_port') or ''),
+        'channel': str(mesh.get('channel') or 'LongFast'),
+    }
+
+
+def _parse_meshtastic_nodes(text: str) -> List[Dict[str, Any]]:
+    nodes: List[Dict[str, Any]] = []
+    if not text:
+        return nodes
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith(('Connected to', 'Nodes in mesh', '╒', '╞', '╘')):
+            continue
+        if '│' in line:
+            cols = [c.strip() for c in line.strip('│').split('│')]
+        elif '|' in line:
+            cols = [c.strip() for c in line.strip('|').split('|')]
+        else:
+            continue
+        cols = [c for c in cols if c]
+        if len(cols) >= 2 and not any(h.lower() in cols[0].lower() for h in ('num', 'user', 'id')):
+            nodes.append({
+                'id': cols[0],
+                'user': cols[1] if len(cols) > 1 else '',
+                'last_heard': cols[2] if len(cols) > 2 else '',
+                'snr': cols[3] if len(cols) > 3 else '',
+                'via': cols[-1] if len(cols) > 4 else '',
+            })
+    return nodes[:24]
+
+
+def meshtastic_status(force: bool = False) -> Dict[str, Any]:
+    """Read-only Meshtastic gateway readiness/status for the Signals page.
+
+    This intentionally avoids configuring, flashing, or transmitting. Once the
+    ThinkNode is plugged into Hack-Safe it can surface serial readiness and, if
+    the Meshtastic CLI is installed, passive node inventory.
+    """
+    def collect():
+        cfg = _mesh_gateway_config()
+        serials = _mesh_serial_candidates()
+        cli = shutil.which('meshtastic')
+        preferred = cfg.get('serial_port') or (serials[0].get('path') if serials else '')
+        status: Dict[str, Any] = {
+            'enabled': cfg.get('enabled', True),
+            'protocol': cfg.get('protocol', 'meshtastic'),
+            'gateway_label': 'Upstairs LoRa gateway',
+            'role': cfg.get('role'),
+            'region': cfg.get('region'),
+            'channel': cfg.get('channel'),
+            'expected_device': cfg.get('expected_device'),
+            'mode': 'serial gateway first, MQTT optional later',
+            'serial_candidates': serials,
+            'preferred_port': preferred,
+            'cli_available': bool(cli),
+            'cli_path': cli or '',
+            'mqtt': {
+                'enabled': cfg.get('mqtt_enabled', False),
+                'server': cfg.get('mqtt_server') or '',
+                'configured': bool(cfg.get('mqtt_enabled') and cfg.get('mqtt_server')),
+            },
+            'nodes': [],
+            'node_count': 0,
+            'last_message': '',
+            'events': [],
+            'cydbuddy_hooks': [
+                'new node heard -> curious/excited',
+                'message received -> scroll message',
+                'gateway offline -> lonely/suspicious',
+                'strong mesh activity -> alert/watchful',
+            ],
+            'notes': [
+                'Plug the ThinkNode into Hack-Safe USB when it arrives.',
+                'Keep region on US915 for the 915 MHz hardware.',
+                'No transmit/config actions run from this readiness card.',
+            ],
+        }
+        if not status['enabled']:
+            status.update({'available': False, 'state': 'disabled', 'summary': 'Meshtastic gateway disabled in config.'})
+            return status
+        if not serials:
+            status.update({'available': False, 'state': 'waiting_hardware', 'summary': 'Waiting for the upstairs ThinkNode gateway to be plugged into Hack-Safe.'})
+            return status
+        if not cli:
+            status.update({'available': False, 'state': 'serial_seen_cli_missing', 'summary': f"Serial radio candidate found at {preferred}; install Meshtastic CLI to read node telemetry."})
+            return status
+        args = ['meshtastic', '--info']
+        if preferred:
+            args = ['meshtastic', '--port', preferred, '--info']
+        info = run(args, timeout=8).strip()
+        nodes_text = run((['meshtastic', '--port', preferred, '--nodes'] if preferred else ['meshtastic', '--nodes']), timeout=10).strip()
+        nodes = _parse_meshtastic_nodes(nodes_text)
+        status.update({
+            'available': bool(info and not info.startswith('ERROR:')),
+            'state': 'online' if info and not info.startswith('ERROR:') else 'cli_error',
+            'summary': 'Meshtastic gateway readable.' if info and not info.startswith('ERROR:') else 'Meshtastic CLI is installed, but the radio did not answer yet.',
+            'info_excerpt': info[:1200],
+            'nodes': nodes,
+            'node_count': len(nodes),
+        })
+        return status
+    return cached('meshtastic_status', 20 if not force else 0, collect)
+
+
 def full_status() -> Dict[str, Any]:
     status = {'time': int(time.time()), 'system': system_status(), 'wifi': wifi_status(False), 'bluetooth': bluetooth_status(False), 'lan': lan_status(), 'services': service_status(), 'sensors': sensor_status(False), 'pwnagotchi_plugins': pwnagotchi_plugins(), 'security_stack': security_stack_status()}
     # Real weather is cached separately so it is actual weather again without slowing every refresh.
@@ -1838,6 +1979,7 @@ def full_status() -> Dict[str, Any]:
     status = mark_new(status)
     status['device_memory'] = _device_memory_status(status)
     status['rf_audit'] = rf_audit_status()
+    status['meshtastic'] = meshtastic_status()
     status['known_devices'] = known_devices_status(status)
     status['household_signals'] = household_signals_status(status)
     status['alert'] = _alert_status(status)

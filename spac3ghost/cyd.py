@@ -196,6 +196,7 @@ def telemetry_from_status(status: Dict[str, Any]) -> Dict[str, Any]:
         },
         'gps': sensors.get('gps') or {},
         'weather': sensors.get('weather') or {},
+        'meshtastic': status.get('meshtastic') or {},
         'vision': status.get('vision') or {},
         'alert': status.get('alert') or {},
         'events': (status.get('events') or [])[:8],

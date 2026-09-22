@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from .collectors import active_recon, bluetooth_status, calibrate_tilt_level, full_status, handshake_capture_status, known_devices_status, known_wifi_passwords, lan_status, monitor_mode_status, pwnagotchi_plugins, sensor_status, set_monitor_mode, start_owned_lab_capture, stop_owned_lab_capture, tilt_status, update_known_device, weather_tile_url, wifi_psk_action, wifi_status, wifi_target_action
+from .collectors import active_recon, bluetooth_status, calibrate_tilt_level, full_status, handshake_capture_status, known_devices_status, known_wifi_passwords, lan_status, meshtastic_status, monitor_mode_status, pwnagotchi_plugins, sensor_status, set_monitor_mode, start_owned_lab_capture, stop_owned_lab_capture, tilt_status, update_known_device, weather_tile_url, wifi_psk_action, wifi_status, wifi_target_action
 from . import __version__, hostinfo, metrics
 from .config import load_config, save_config
 from .controls import ai_chat_ask, ai_chat_status, camera_status, external_control, external_status, ir_action, launch_proton_gui, service_status, services_status, set_camera_feed, set_vision_enabled, spicy_tool_action, spicy_tools_status, lab_toys_status, companion_firmware_action, flipper_feature_action, lab_gate_action, nfc_rfid_action, safety_boundary_action, lab_software_action, tailscale_ip, tailscale_status, tailscale_up, tailscale_restart, tailscale_protect, toggle_service, toggle_vpn, vpn_status, select_vpn_profile, connect_vpn_profile
@@ -394,6 +394,8 @@ class Handler(BaseHTTPRequestHandler):
             return json_response(self, cyd_status())
         if path == '/api/cyd/telemetry':
             return json_response(self, telemetry_from_status(status_snapshot(wait=False)))
+        if path == '/api/mesh/status':
+            return json_response({'meshtastic': meshtastic_status(force=parsed.query in ('force=1', 'refresh=1'))})
         if path == '/api/health':
             return json_response(self, health_payload())
         if path == '/api/metrics':

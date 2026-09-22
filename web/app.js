@@ -485,6 +485,7 @@ async function refresh(){
     safeRender('Known Devices', ()=>renderKnownDevices(s.known_devices||{}));
     safeRender('Household Signals', ()=>renderHouseholdSignals(s.household_signals||{}));
     safeRender('Wi-Fi', ()=>renderWifi(wifi));
+    safeRender('Meshtastic', ()=>renderMeshtastic(s.meshtastic||{}));
     safeRender('RF Audit', ()=>renderRFAudit(s.rf_audit||{}, s.rf_recommendations||[]));
     safeRender('Proton map', ()=>renderGlobalMap(s));
     safeRender('Defense Ops', ()=>renderDefenseOps(s.security_stack||{}));
@@ -544,6 +545,35 @@ function renderCydBuddy(cyd={}){
     metricCell('AI', `${ai.mode||'tiny-local'} ${ai.confidence??0}%`, ai.auto_mode?'auto mode':'manual mode')
   ].join('');
   el.innerHTML=`${dock}<div class="cyd-grid">${statGrid}</div><div class="cyd-buddy-panels"><section><h3>Current Voice</h3><p>${escapeHtml(phrases.current||cyd.message||'quiet')}</p><small>${escapeHtml(phrases.personality||'personality n/a')} // scroll ${escapeHtml(phrases.scroll_ms??'n/a')}ms // SD phrases ${phrases.sd_lookup?'on':'off'}</small></section><section><h3>Tiny AI Insight</h3><p>${escapeHtml(ai.insight||learn.summary||'learning state pending')}</p><small>${escapeHtml(ai.daily_summary||'daily summary pending')}</small></section><section><h3>Memory Bank</h3><ul>${memories}</ul><small>${escapeHtml(mem.random||'')}</small></section></div><div class="cyd-leases">${leaseHtml}</div>`;
+}
+
+function renderMeshtastic(mesh={}){
+  const el=document.getElementById('meshtasticViz'); if(!el) return;
+  const state=String(mesh.state||'waiting_hardware');
+  const online=state==='online';
+  const waiting=state==='waiting_hardware';
+  const serials=mesh.serial_candidates||[];
+  const nodes=mesh.nodes||[];
+  const serialHtml=serials.slice(0,5).map(s=>`<div class="mesh-row"><b>${escapeHtml(s.path||'serial')}</b><span>${escapeHtml(s.resolved||'')}</span></div>`).join('') || '<div class="scanline-note">No LoRa serial device seen yet. Plug the upstairs ThinkNode gateway into Hack-Safe USB when it arrives.</div>';
+  const nodeHtml=nodes.slice(0,8).map(n=>`<div class="mesh-node"><b>${escapeHtml(n.user||n.id||'node')}</b><span>${escapeHtml([n.id,n.last_heard,n.snr,n.via].filter(Boolean).join(' // '))}</span></div>`).join('') || `<div class="scanline-note">${online?'No neighbor nodes reported yet.':'Node list will appear after the gateway and CLI are readable.'}</div>`;
+  const hooks=(mesh.cydbuddy_hooks||[]).map(h=>`<li>${escapeHtml(h)}</li>`).join('') || '<li>CYD reaction hooks pending.</li>';
+  const notes=(mesh.notes||[]).map(n=>`<li>${escapeHtml(n)}</li>`).join('') || '';
+  const statusClass=online?'online':(waiting?'waiting':'warn');
+  el.innerHTML=`<div class="mesh-dock ${statusClass}"><div><b>${escapeHtml(mesh.gateway_label||'Upstairs LoRa gateway')}</b><span>${escapeHtml(mesh.summary||'Waiting for gateway telemetry.')}</span><small>${escapeHtml(mesh.expected_device||'ThinkNode M2')} // ${escapeHtml(mesh.region||'US915')} // ${escapeHtml(mesh.channel||'LongFast')}</small></div><button onclick="refreshMeshStatus()">Refresh Mesh</button></div><div class="cyd-grid">${metricCell('State', state.replaceAll('_',' '), mesh.protocol||'meshtastic')}${metricCell('CLI', mesh.cli_available?'installed':'missing', mesh.cli_path||'install meshtastic CLI later')}${metricCell('Serial', mesh.preferred_port||'waiting', `${serials.length} candidate(s)`)}${metricCell('Nodes', mesh.node_count??nodes.length??0, mesh.mode||'serial gateway first')}${metricCell('MQTT', mesh.mqtt?.configured?'configured':(mesh.mqtt?.enabled?'needs server':'off'), mesh.mqtt?.server||'optional bridge')}${metricCell('Buddy Hooks', (mesh.cydbuddy_hooks||[]).length, 'CYD telemetry gets mesh block')}</div><div class="mesh-panels"><section><h3>Serial Candidates</h3>${serialHtml}</section><section><h3>Nodes Heard</h3>${nodeHtml}</section><section><h3>CYD Reactions</h3><ul>${hooks}</ul></section><section><h3>Setup Notes</h3><ul>${notes}</ul></section></div>${mesh.info_excerpt?`<pre class="mesh-info">${escapeHtml(mesh.info_excerpt)}</pre>`:''}`;
+}
+
+async function refreshMeshStatus(){
+  const el=document.getElementById('meshtasticViz');
+  if(el) el.classList.add('loading');
+  try{
+    const r=await fetch('/api/mesh/status?refresh=1',{cache:'no-store'});
+    const d=await r.json();
+    renderMeshtastic(d.meshtastic||{state:'error',summary:'Mesh refresh returned no payload.'});
+  }catch(e){
+    renderMeshtastic({state:'error',summary:`Mesh refresh failed: ${e.message||e}`, notes:['Dashboard could not reach /api/mesh/status.']});
+  }finally{
+    if(el) el.classList.remove('loading');
+  }
 }
 async function askAIChat(){
   const prompt=document.getElementById('aiPrompt')?.value||'';
