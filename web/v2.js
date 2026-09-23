@@ -18,8 +18,13 @@
   };
   var esc = function (s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
 
-  /* ------------------------------------------------------------------ toasts */
+  /* ------------------------------------------------------------------ toasts + notification history */
   var toastHost;
+  var NOTIF_LOG_KEY = 'v2NotifLog';
+  function loadNotifLog() { try { var v = JSON.parse(store.get(NOTIF_LOG_KEY, '[]')); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+  var notifLog = loadNotifLog(); // {title, text, kind, ts} newest-first, persists across reloads
+  var notifUnread = 0;
+  function saveNotifLog() { store.set(NOTIF_LOG_KEY, JSON.stringify(notifLog.slice(0, 40))); }
   function toast(title, text, kind, ms) {
     if (!toastHost) { toastHost = document.createElement('div'); toastHost.className = 'v2-toasts'; toastHost.setAttribute('aria-live', 'polite'); document.body.appendChild(toastHost); }
     var colors = { ok: 'var(--green)', warn: 'var(--yellow)', bad: 'var(--red)', info: 'var(--cyan)' };
@@ -33,8 +38,51 @@
     toastHost.appendChild(el);
     while (toastHost.children.length > 4) toastHost.firstChild.remove();
     setTimeout(close, ms || 5200);
+    notifLog.unshift({ title: title, text: text || '', kind: kind, ts: Date.now() });
+    notifLog = notifLog.slice(0, 40); saveNotifLog();
+    notifUnread++; renderBell();
   }
   window.v2Toast = toast;
+
+  /* ------------------------------------------------------------------ notification bell + history panel */
+  var bellBtn, bellBadge, bellPanel;
+  function relTime(ts) {
+    var s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+    if (s < 5) return 'just now'; if (s < 60) return s + 's ago';
+    var m = Math.round(s / 60); if (m < 60) return m + 'm ago';
+    var h = Math.round(m / 60); if (h < 24) return h + 'h ago';
+    return Math.round(h / 24) + 'd ago';
+  }
+  function renderBell() {
+    if (!bellBtn) return;
+    bellBadge.textContent = notifUnread > 9 ? '9+' : String(notifUnread);
+    bellBadge.hidden = notifUnread === 0;
+    if (bellPanel && !bellPanel.hidden) renderBellPanel();
+  }
+  function renderBellPanel() {
+    var colors = { ok: 'var(--green)', warn: 'var(--yellow)', bad: 'var(--red)', info: 'var(--cyan)' };
+    bellPanel.innerHTML = '<div class="v2-bell-head"><b>Notifications</b><button type="button" class="v2-bell-clear">Clear</button></div>' +
+      (notifLog.length ? notifLog.map(function (n) {
+        return '<div class="v2-bell-item" style="--tc:' + (colors[n.kind] || colors.info) + '"><b>' + esc(n.title) + '</b><span>' + esc(n.text) + '</span><time>' + relTime(n.ts) + '</time></div>';
+      }).join('') : '<div class="v2-bell-empty">Nothing yet. Alerts, service changes, and scans will show up here.</div>');
+    var clearBtn = $('.v2-bell-clear', bellPanel);
+    if (clearBtn) clearBtn.onclick = function () { notifLog = []; saveNotifLog(); renderBellPanel(); };
+  }
+  function toggleBell(force) {
+    var open = force === undefined ? bellPanel.hidden : !force;
+    bellPanel.hidden = !open;
+    if (open) { notifUnread = 0; renderBell(); renderBellPanel(); }
+  }
+  function buildBell(header) {
+    var wrap = document.createElement('div'); wrap.className = 'v2-bell-wrap';
+    bellBtn = document.createElement('button'); bellBtn.type = 'button'; bellBtn.className = 'v2-iconbtn v2-bell-btn'; bellBtn.title = 'Notifications'; bellBtn.innerHTML = '🔔';
+    bellBadge = document.createElement('span'); bellBadge.className = 'v2-bell-badge'; bellBadge.hidden = true; bellBtn.appendChild(bellBadge);
+    bellPanel = document.createElement('div'); bellPanel.className = 'v2-bell-panel'; bellPanel.hidden = true;
+    bellBtn.onclick = function (e) { e.stopPropagation(); toggleBell(); };
+    document.addEventListener('click', function (e) { if (bellPanel && !bellPanel.hidden && !wrap.contains(e.target)) toggleBell(false); });
+    wrap.appendChild(bellBtn); wrap.appendChild(bellPanel);
+    return wrap;
+  }
 
   /* ------------------------------------------------------------------ themes */
   var THEMES = ['default', 'aurora', 'synthwave', 'glacier', 'mono', 'purple', 'blue', 'orange', 'red', 'yellow'];
@@ -79,7 +127,7 @@
     { k: 'net', label: 'Network', text: function (s) { var n = s.system && s.system.net_io; if (!n || !n.available) return null; return rate(n.rx_bps) + '↓ ' + rate(n.tx_bps) + '↑'; }, get: function (s) { var n = s.system && s.system.net_io; return n && n.available ? num(n.rx_bps) : null; }, sub: function (s) { return (s.system && s.system.ips && s.system.ips[0]) || ''; } },
     { k: 'uptime', label: 'Uptime', text: function (s) { return s.system && s.system.uptime_s != null ? dur(s.system.uptime_s) : null; }, sub: function (s) { var h = s.system && s.system.hostname; var p = s.system && s.system.platform; return (h || '') + (p && p.os ? ' · ' + p.os : ''); } },
     { k: 'signals', label: 'Signals', text: function (s) { return cnt(s.wifi, 'networks') + ' / ' + cnt(s.bluetooth, 'devices') + ' / ' + cnt(s.lan, 'devices'); }, sub: function () { return 'Wi-Fi / BT / LAN'; } },
-    { k: 'alert', label: 'Alert Level', text: function (s) { return s.alert && s.alert.level ? s.alert.level : null; }, sub: function (s) { return s.alert ? 'score ' + (s.alert.score != null ? s.alert.score : 0) : ''; }, state: function (s) { var l = s.alert && s.alert.level; return !l ? 'na' : (l === 'GREEN' ? 'ok' : (l === 'YELLOW' || l === 'ORANGE' ? 'warn' : 'bad')); } }
+    { k: 'alert', label: 'Alert Level', text: function (s) { return s.alert && s.alert.level ? s.alert.level : null; }, sub: function (s) { return s.alert ? 'score ' + (s.alert.score != null ? s.alert.score : 0) : ''; }, state: function (s) { var l = s.alert && s.alert.level; return !l ? 'na' : (l === 'GREEN' ? 'ok' : l === 'YELLOW' ? 'caution' : l === 'ORANGE' ? 'warn' : 'bad'); } }
   ];
   function num(v) { if (v === null || v === undefined || v === '') return null; v = Number(v); return isFinite(v) ? v : null; }
   function cnt(o, k) { return o && o[k] ? o[k].length : 0; }
@@ -143,10 +191,11 @@
     var pal = btn('⌘ Search<kbd>Ctrl K</kbd>', 'Command palette (Ctrl/Cmd+K)', openPalette, 'v2-hide-sm');
     var th = btn('◐ Theme', 'Cycle theme (T)', function () { cycleTheme(1); });
     var fs = btn('⤢', 'Fullscreen (F)', fullscreen, 'v2-hide-sm');
+    var bell = buildBell(header);
     var box = document.createElement('div'); box.className = 'v2-clockbox';
     clock.parentNode.insertBefore(box, clock); box.appendChild(clock);
     dateEl = document.createElement('span'); dateEl.className = 'v2-date'; box.appendChild(dateEl);
-    hud.appendChild(pill); hud.appendChild(pal); hud.appendChild(th); hud.appendChild(fs); hud.appendChild(box);
+    hud.appendChild(pill); hud.appendChild(pal); hud.appendChild(th); hud.appendChild(bell); hud.appendChild(fs); hud.appendChild(box);
     header.appendChild(hud);
     tickDate();
   }
@@ -171,19 +220,60 @@
   }
 
   /* ------------------------------------------------------------------ event -> toast bridge */
-  var seenTs = null, lastAlert = null;
-  var KINDS = { alert: ['Alert', 'bad'], service: ['Service', 'warn'], thermal: ['Thermal', 'warn'], gps: ['GPS', 'info'], vpn: ['VPN', 'info'], vision: ['Vision', 'info'], boot: ['Boot', 'ok'], scan: ['Scan', 'info'] };
+  var seenTs = null, lastAlert = null, lastHot = false, lastDiskFull = false, lastMeshMsg = null, lastCydConnected = null;
+  // 'chatter'/'status' are intentionally excluded: they fire on essentially every refresh and
+  // would turn the notification tray into noise. Everything else here only fires on a real
+  // change or a user-triggered action, so it is safe to always surface.
+  var KINDS = {
+    alert: ['Alert', 'bad'], service: ['Service', 'warn'], thermal: ['Thermal', 'warn'],
+    vpn: ['VPN', 'info'], vision: ['Vision', 'info'], boot: ['Boot', 'ok'], scan: ['Scan', 'info'],
+    wifi: ['Wi-Fi', 'info'], bluetooth: ['Bluetooth', 'info'], lan: ['LAN', 'info'],
+    settings: ['Settings', 'ok'], tailscale: ['Tailscale', 'info'], cyd: ['CYD Buddy', 'info'],
+    lab: ['Lab', 'info'], spicy: ['Lab', 'info'], external: ['Externals', 'info'],
+    pwnagotchi: ['Pwnagotchi', 'info'], recon: ['Recon', 'warn'], camera: ['Camera', 'info'],
+    ai: ['AI Chat', 'info'], sensors: ['Sensors', 'info'], memory: ['Memory', 'info']
+  };
   function pollEvents() {
     var s = status(); if (!s) return;
     var evs = s.events || [];
-    if (seenTs === null) { seenTs = evs.length ? evs[0].ts : 0; lastAlert = s.alert && s.alert.level; return; }
+    if (seenTs === null) {
+      seenTs = evs.length ? evs[0].ts : 0; lastAlert = s.alert && s.alert.level;
+      lastHot = !!(s.mood && (s.mood.name === 'hot')); lastDiskFull = diskPct(s) != null && diskPct(s) >= 90;
+      lastMeshMsg = (s.meshtastic && s.meshtastic.last_message) || null;
+      lastCydConnected = s.cyd_buddy ? !!s.cyd_buddy.connected : null;
+      return;
+    }
     evs.slice().reverse().forEach(function (e) {
       if (e.ts > seenTs && KINDS[e.kind]) toast(KINDS[e.kind][0], e.text, KINDS[e.kind][1]);
     });
     if (evs.length) seenTs = Math.max(seenTs, evs[0].ts);
+
     var lvl = s.alert && s.alert.level;
     if (lvl && lastAlert && lvl !== lastAlert) toast('Alert level ' + lvl, (s.alert.reasons || []).slice(0, 2).join(' · ') || 'status changed', lvl === 'GREEN' ? 'ok' : 'warn');
     lastAlert = lvl || lastAlert;
+
+    var isHot = !!(s.mood && s.mood.name === 'hot');
+    if (isHot && !lastHot) { var t = s.system && s.system.cpu_temp_f; toast('CPU running hot', t != null ? Math.round(t) + '°F and climbing' : 'thermal threshold crossed', 'bad'); }
+    lastHot = isHot;
+
+    var dp = diskPct(s), diskFull = dp != null && dp >= 90;
+    if (diskFull && !lastDiskFull) toast('Disk almost full', dp + '% used on ' + ((s.system && s.system.disk_root) || 'the main volume'), 'warn');
+    lastDiskFull = diskFull;
+
+    ['wifi', 'bluetooth', 'lan'].forEach(function (key) {
+      var n = s[key] && s[key].new_count;
+      if (n > 0) toast('New ' + (key === 'lan' ? 'LAN device' : key === 'wifi' ? 'Wi-Fi network' : 'Bluetooth device') + (n > 1 ? 's' : ''), n + ' spotted since last check', 'info', 4200);
+    });
+
+    var meshMsg = (s.meshtastic && s.meshtastic.last_message) || null;
+    if (meshMsg && meshMsg !== lastMeshMsg) toast('Mesh message', String(meshMsg).slice(0, 140), 'info');
+    lastMeshMsg = meshMsg;
+
+    var cydConnected = s.cyd_buddy ? !!s.cyd_buddy.connected : null;
+    if (cydConnected !== null && lastCydConnected !== null && cydConnected !== lastCydConnected) {
+      toast('CYD Buddy', cydConnected ? 'docked and heartbeating' : 'disconnected', cydConnected ? 'ok' : 'warn');
+    }
+    lastCydConnected = cydConnected;
   }
 
   /* ------------------------------------------------------------------ card folding */

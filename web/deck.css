@@ -92,7 +92,7 @@
 
 /* posture */
 .deck-posture { display: grid; gap: 8px; margin-top: 8px; font-size: 11px; }
-.deck-posture .lvl { display: flex; align-items: baseline; gap: 10px; } .deck-posture .lvl b { font: 800 22px var(--v2-mono, monospace); color: var(--green); } .deck-posture .lvl.red b { color: var(--red); } .deck-posture .lvl.orange b, .deck-posture .lvl.yellow b { color: var(--yellow); } .deck-posture small { color: var(--dim); }
+.deck-posture .lvl { display: flex; align-items: baseline; gap: 10px; } .deck-posture .lvl b { font: 800 22px var(--v2-mono, monospace); color: var(--green); text-shadow: 0 0 10px color-mix(in srgb, currentColor 55%, transparent); } .deck-posture .lvl.red b { color: var(--red); } .deck-posture .lvl.orange b { color: #ff8c2e; } .deck-posture .lvl.yellow b { color: var(--yellow); } .deck-posture small { color: var(--dim); }
 .deck-posture .lay { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; } .deck-posture .lay span { border: 1px solid var(--v2-line); border-radius: 9px; padding: 6px; text-align: center; font: 800 18px var(--v2-mono, monospace); } .deck-posture .lay span small { display: block; font: 700 9px var(--v2-ui, system-ui); letter-spacing: 1px; text-transform: uppercase; }
 .deck-posture .lay .u { color: var(--red); } .deck-posture .lay .a { color: var(--yellow); } .deck-posture .lay .h { color: var(--cyan); }
 

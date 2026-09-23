@@ -1,5 +1,58 @@
 # Changelog
 
+## 2.4.0
+
+Perfecting the Spac3-Gh0st face/voice and the Signals tab, per this session's request to make
+the personality "pwnagotchi-perfect out of the box" and to fix the top dock, heartbeat, GPS radar
+and Weather Ops radar.
+
+### Fixed
+- **Phrases repeated constantly.** `Spac3Voice` was recreated on almost every call, so its
+  instance-level "don't repeat" tracking never had a chance to do anything -- every phrase pick
+  was a fresh coin flip over the same small pool. Replaced with a module-level shuffle-bag
+  (`_pick_no_repeat` in `spac3ghost/personality.py`): the most-recently-used ~2/3 of a phrase
+  bank is held back before a repeat is allowed, independent of how often the voice object itself
+  gets rebuilt. Also grew several thin phrase banks (idle, gps fix/no-fix, hot, wifi scan,
+  atmosphere/ambient banks) so the bag has more to draw from.
+- **Moods didn't react to movement or a down critical service.** `choose_mood()` now returns a
+  dedicated "movement" mood on a fast tilt event, and a "concerned" mood when `ssh` or
+  `tailscaled` is down -- previously neither had any effect on the face at all. Indoor temperature
+  now also flavors the weather-mood pool (`roomcool` / `roomwarm`) alongside the existing outdoor
+  weather checks.
+- **Alert Level tile ignored its own color.** The GREEN/YELLOW/ORANGE/RED text was always styled
+  the same dim tone regardless of level; the tile's 4-state mapping and CSS now actually key off
+  `alert.level`, with a distinct "caution" (yellow) state separate from "warn" (orange).
+- **GPS/Sensors radar blips didn't sync to the sweep.** The old CSS `animation-delay` math
+  (`(a/360)*-6`) never actually lined up brightening with the sweep line crossing a blip except by
+  coincidence. Rewritten as a canvas widget (`drawGpsRadar` in `web/charts.js`) that computes the
+  sweep angle from wall-clock time and lights/decays each blip exactly when the sweep passes it.
+- **System pulse was a generic blip, not a heartbeat.** `deck.js`'s `drawPulse()` now draws an
+  actual PQRST waveform (P wave, Q dip, R spike, S recovery, T wave, rest) with load-driven BPM
+  and a flash on every R-wave crossing, instead of a sine-ish placeholder.
+
+### New
+- **Notification bell.** A bell icon in the header HUD collects toasts (alerts, new devices, mesh
+  messages, CYD connect/disconnect, CPU/disk threshold crossings, etc.) into a persistent
+  (localStorage-backed) unread-counted log you can open any time, instead of catching a toast only
+  if you happened to be looking when it fired. `KINDS` in `web/v2.js` was also expanded to cover
+  every real backend event kind so the bell/toast styling matches what's actually happening.
+- **Weather Ops radar rebuilt.** Replaced the old static "sweep + one yellow dot" radar with a
+  canvas precipitation-cell field (`drawWeatherRadar` in `web/charts.js`) that drifts along the
+  live wind vector, plus Recent / Now / Upcoming filter tabs. Being honest about the limits here:
+  OpenWeatherMap's free tile API only ever has *one* current-moment tile, so "Recent"/"Upcoming"
+  are a stylized extrapolation along wind direction and speed, not real historical/forecast radar
+  frames -- the real OpenWeather tile (when a key is configured) is still shown, but only under
+  "Now" since that's the only real frame that exists. The 5-day forecast now sits beside the radar
+  instead of below it (`grid-template-areas` in `style.css`); it'll show up to 5 days when the
+  weather source provides them (today, wttr.in's free response typically only returns 3).
+- `windDir`/`precipMm` added to `weather_status()` in `spac3ghost/collectors.py` to feed the radar's
+  wind-vector drift.
+
+### Not done (by design)
+- No calendar-events feature was added -- there's no calendar data source wired into the app, and
+  fabricating fake events felt worse than leaving it out. Flag if you'd like a real calendar/ICS
+  feed hooked in.
+
 ## 2.3.0
 
 Pulled in this session's CYD Buddy work from GitHub (dock/telemetry, Meshtastic gateway card,

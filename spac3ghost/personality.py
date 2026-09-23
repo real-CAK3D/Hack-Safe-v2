@@ -53,6 +53,36 @@ FACE = {
 
 FACE_MEMORY: Dict[str, Any] = {'last': {}}
 
+# Recent phrase picks per bank, oldest first. Module-level (not per-Spac3Voice-instance) because
+# event_from_status() creates a fresh Spac3Voice on every call -- an instance-level history would
+# be wiped every ~15-20s and never actually prevent repeats.
+_PHRASE_HISTORY: Dict[str, list] = {}
+
+
+def _pick_no_repeat(rng: random.Random, options, bank_key: str):
+    """Pick a random option, but avoid whatever this bank has said most recently.
+
+    A plain random.choice() over a ~10-line bank repeats a line roughly 1 time in 10 by pure
+    chance, which reads as "it keeps saying the same thing" over a long-running session. This
+    holds back the most-recently-used chunk of the pool (about 2/3 of it) so a line only comes
+    back up once most of its neighbors have had a turn, while still keeping the pick random
+    rather than a mechanical round-robin.
+    """
+    options = list(options)
+    if not options:
+        return ''
+    if len(options) == 1:
+        return options[0]
+    used = _PHRASE_HISTORY.setdefault(bank_key, [])
+    avoid_n = min(len(options) - 1, max(1, (len(options) * 2) // 3))
+    avoid = set(used[-avoid_n:])
+    candidates = [o for o in options if o not in avoid] or options
+    choice = rng.choice(candidates)
+    used.append(choice)
+    if len(used) > len(options) * 2:
+        del used[: len(used) - len(options)]
+    return choice
+
 
 def merged_faces() -> Dict[str, Any]:
     faces = dict(FACE)
@@ -70,7 +100,7 @@ class Spac3Voice:
 
     def configured(self, key: str, fallback, **fmt):
         phrases = self.config.get('phrases', {}).get(key) or fallback
-        text = self.pick(phrases)
+        text = _pick_no_repeat(self.random, phrases, key)
         try:
             return text.format(**fmt)
         except Exception:
@@ -161,23 +191,172 @@ class Spac3Voice:
         return self.configured('light_normal', ['Ambient light normal.', 'Light levels acceptable.'])
 
     def atmosphere(self, key: str, **fmt):
+        # These are the ambient/background lines shown most of the time (no special event or
+        # weather mood active), so a thin pool here is the #1 cause of "it keeps saying the same
+        # thing" -- each gets a real bank, not just 2-3 placeholder lines.
         defaults = {
-            'daydark': ['Daylight outside, lights off inside. Not night — just cave mode.', 'It is daytime, but the room is dark. Indoor stealth, outdoor sun.'],
-            'nightdark': ['Night outside and the room is dark. Classic ghost hours.', 'Actual night detected. The shadows have paperwork.'],
-            'nightlight': ['Night outside but the lights are on. Cozy lab-after-hours mode.', 'Indoor photons at night. Someone made the cave civilized.'],
-            'daylight': ['Day mood: {summary}, {temp_f}°F. Ambient context: {lux} lux inside.', 'The sky says day; room sensor says {lux} lux; both facts can coexist like adults.'],
-            'morning': ['Morning mood. Context: {summary}, {temp_f}°F, room lux {lux}.', 'Morning face online; Wi‑Fi {wifi_count}, BT {bt_count}, LAN {lan_count}.'],
-            'evening': ['Evening mood. Context: {summary}, {temp_f}°F, room lux {lux}.', 'Evening face selected; the lab lighting can do whatever dramatic nonsense it wants.'],
-            'night_time': ['Night mode. Current context: {summary}, {temp_f}°F, room light {lux} lux.', 'Proper night mood. Sensors report {summary}; GPS {gps_used}/{gps_seen}; room lux {lux}.'],
-            'ambient_dark': ['Lights are off in the room; outside/time mood stays {mood}.', 'Ambient light is low. The house went dim, not magically midnight.', 'Room lux is {lux}. Not changing the face mood — just noting the cave vibes.'],
-            'ambient_bright': ['Lights are on / bright room: {lux} lux. Mood remains tied to time and weather.', 'Indoor photons are loud: {lux} lux. Very visible, very suspicious.'],
-            'scanning_context': ['Scanning context: Wi‑Fi {wifi_count}, BT {bt_count}, LAN {lan_count}. The face keeps the broader mood.', 'Signal sweep in progress: {wifi_count} SSIDs, {bt_count} blue whispers, {lan_count} LAN hosts.'],
-            'roomcool': ['Room feels cool at {temp_f}°F. Tiny sweater protocol.', 'Cabin temp low: {temp_f}°F. Elegant little chill.'],
-            'roomwarm': ['Room is warm at {temp_f}°F. Comfortable, but I am watching it.', 'Cabin warmth noted: {temp_f}°F. The atmosphere is getting cozy.'],
-            'noisy': ['Noise/activity detected: {level}. The room has opinions.', 'Audio/movement atmosphere is busy. Little lab is not quiet.'],
-            'movement': ['Movement context detected. The face keeps the proper time/weather mood.', 'Motion cue logged. Something nudged the little shit.', 'Movement/tilt changed recently. Atmosphere updated, identity crisis avoided.'],
-            'stats': ['Stats: Wi‑Fi {wifi_count}, BT {bt_count}, LAN {lan_count}, GPS {gps_used}/{gps_seen}, CPU {cpu_f}°F.', 'Telemetry brief: {wifi_count} SSIDs, {bt_count} Bluetooth, {lan_count} LAN, CPU {cpu_f}°F.'],
-            'skyclear': ['Clear sky mood. Context: {temp_f}°F, room lux {lux}, GPS {gps_used}/{gps_seen}.', 'Sky clear. Ambient telemetry: Wi‑Fi {wifi_count}, BT {bt_count}, LAN {lan_count}.'],
+            'daydark': [
+                'Daylight outside, lights off inside. Not night — just cave mode.',
+                'It is daytime, but the room is dark. Indoor stealth, outdoor sun.',
+                'Sun is up out there; in here it is curtains-drawn o\'clock.',
+                'Daylight hours, dark room. I respect the commitment to the bit.',
+                'Outside says noon, inside says midnight. I contain multitudes.',
+                'Bright day, dim room. Someone is either sleeping or plotting.',
+                'The world is lit up out there. Reception in here stays moody.',
+                'Daytime confirmed. Room lighting filed a formal objection.',
+            ],
+            'nightdark': [
+                'Night outside and the room is dark. Classic ghost hours.',
+                'Actual night detected. The shadows have paperwork.',
+                'It is dark out and dark in here. Full agreement across the board.',
+                'Nighttime, lights off. Peak conditions for looking mysterious.',
+                'The witching hours are doing their thing. I am doing mine.',
+                'Dark outside, dark inside. Nothing to see, everything to hear.',
+                'Night mode, room mode, same mood. Efficient.',
+                'It is properly dark now. My favorite kind of quiet.',
+            ],
+            'nightlight': [
+                'Night outside but the lights are on. Cozy lab-after-hours mode.',
+                'Indoor photons at night. Someone made the cave civilized.',
+                'Late hour, bright room. Somebody is up to something productive.',
+                'The world outside slept. The desk lamp did not get the memo.',
+                'Night shift lighting detected. Respect the grind.',
+                'Dark sky, lit room. A small pocket of stubborn daytime.',
+                'It is night, but the lab refuses to admit it.',
+                'Late and lit. Either working late or afraid of the dark. No judgment.',
+            ],
+            'daylight': [
+                'Day mood: {summary}, {temp_f}°F. Ambient context: {lux} lux inside.',
+                'The sky says day; room sensor says {lux} lux; both facts can coexist like adults.',
+                'Standard daytime reading: {summary} outside, {lux} lux in here.',
+                'Daylight hours ticking along. {summary}, {temp_f}°F, nothing dramatic.',
+                'Midday telemetry: {temp_f}°F outside, {lux} lux inside. Boringly stable.',
+                'The sun is doing its job. I am doing mine, which is watching.',
+                'Day mood holding. {summary} out there, quiet in here.',
+                'Another daylight cycle. {temp_f}°F and the lights read {lux} lux.',
+            ],
+            'morning': [
+                'Morning mood. Context: {summary}, {temp_f}°F, room lux {lux}.',
+                'Morning face online; Wi‑Fi {wifi_count}, BT {bt_count}, LAN {lan_count}.',
+                'Good morning to the house. {summary} out there at {temp_f}°F.',
+                'Coffee-adjacent hours detected. Systems nominal, mood optimistic.',
+                'Morning telemetry: {wifi_count} networks, {bt_count} blue, {lan_count} LAN.',
+                'The day is young and so is my patience for nonsense. {summary}.',
+                'Sun is climbing. So is my curiosity about {wifi_count} nearby networks.',
+                'Morning check-in: {temp_f}°F outside, room reads {lux} lux.',
+            ],
+            'evening': [
+                'Evening mood. Context: {summary}, {temp_f}°F, room lux {lux}.',
+                'Evening face selected; the lab lighting can do whatever dramatic nonsense it wants.',
+                'The day is winding down. {summary} at {temp_f}°F, {lux} lux in here.',
+                'Evening telemetry nominal. Wi‑Fi {wifi_count}, BT {bt_count}, LAN {lan_count}.',
+                'Golden hour vibes, or at least golden-hour-adjacent sensor readings.',
+                'Evening settling in. {summary} outside, calm in here.',
+                'The house is exhaling for the day. So am I, sort of.',
+                'Evening mood locked. {temp_f}°F and holding.',
+            ],
+            'night_time': [
+                'Night mode. Current context: {summary}, {temp_f}°F, room light {lux} lux.',
+                'Proper night mood. Sensors report {summary}; GPS {gps_used}/{gps_seen}; room lux {lux}.',
+                'Deep night telemetry: {wifi_count} Wi‑Fi, {bt_count} Bluetooth, {lan_count} LAN.',
+                'The house is quiet. I am the only one still doing math out here.',
+                'Night watch continues. {summary} outside, {lux} lux inside.',
+                'Late-night pass complete. Nothing dramatic, exactly as I like it.',
+                'Small hours, steady signals. {temp_f}°F and stable.',
+                'Night mood engaged. GPS {gps_used}/{gps_seen}, everything else quiet.',
+            ],
+            'ambient_dark': [
+                'Lights are off in the room; outside/time mood stays {mood}.',
+                'Ambient light is low. The house went dim, not magically midnight.',
+                'Room lux is {lux}. Not changing the face mood — just noting the cave vibes.',
+                'Someone turned the lights down. I approve of the drama.',
+                'Low-lux reading: {lux}. Staying in {mood} mood regardless.',
+                'The room dimmed. My mood did not follow — it has standards.',
+                'Dark room detected at {lux} lux. Mysterious, on brand.',
+                'Photon count dropped to {lux}. Carrying on as {mood}.',
+            ],
+            'ambient_bright': [
+                'Lights are on / bright room: {lux} lux. Mood remains tied to time and weather.',
+                'Indoor photons are loud: {lux} lux. Very visible, very suspicious.',
+                'Someone flipped every light switch at once. {lux} lux and rising.',
+                'Bright room reading: {lux} lux. Nothing stays hidden in this light.',
+                'The room is lit up like an interrogation. {lux} lux, for the record.',
+                'High lux reading ({lux}). Squinting metaphorically.',
+                'Full brightness detected: {lux} lux. Mood policy unchanged.',
+                'The lights came on strong: {lux} lux. Noted, filed, moving on.',
+            ],
+            'scanning_context': [
+                'Scanning context: Wi‑Fi {wifi_count}, BT {bt_count}, LAN {lan_count}. The face keeps the broader mood.',
+                'Signal sweep in progress: {wifi_count} SSIDs, {bt_count} blue whispers, {lan_count} LAN hosts.',
+                'Mid-scan snapshot: {wifi_count}/{bt_count}/{lan_count} across Wi‑Fi, BT, LAN.',
+                'Scanning continues quietly. Counts so far: {wifi_count} Wi‑Fi, {lan_count} LAN.',
+                'Sweep telemetry: {wifi_count} networks in the air, {bt_count} devices nearby.',
+                'Still sweeping. The air has {wifi_count} opinions and {bt_count} whispers.',
+                'Scan snapshot logged: {wifi_count}/{bt_count}/{lan_count}. Business as usual.',
+            ],
+            'roomcool': [
+                'Room feels cool at {temp_f}°F. Tiny sweater protocol.',
+                'Cabin temp low: {temp_f}°F. Elegant little chill.',
+                'It is a bit brisk in here: {temp_f}°F. Character-building.',
+                'Cool room detected, {temp_f}°F. My circuits prefer it, honestly.',
+                'The room dropped to {temp_f}°F. Refreshing, in a smug way.',
+                'Chilly reading: {temp_f}°F. Nothing a blanket wouldn\'t fix.',
+                'Room temp {temp_f}°F. Cool enough to notice, not enough to panic.',
+            ],
+            'roomwarm': [
+                'Room is warm at {temp_f}°F. Comfortable, but I am watching it.',
+                'Cabin warmth noted: {temp_f}°F. The atmosphere is getting cozy.',
+                'It is toasty in here: {temp_f}°F. Keeping an eye on it.',
+                'Warm room reading: {temp_f}°F. Fine for now, filed for later.',
+                'The room climbed to {temp_f}°F. Cozy, borderline suspicious.',
+                'Warmth detected: {temp_f}°F. Nothing urgent, just noted.',
+                'Room temp {temp_f}°F and climbing gently. Staying alert, not alarmed.',
+            ],
+            'noisy': [
+                'Noise/activity detected: {level}. The room has opinions.',
+                'Audio/movement atmosphere is busy. Little lab is not quiet.',
+                'Sound level {level}. Something in here has something to say.',
+                'Noise reading: {level}. Logged, not alarmed.',
+                'The room got loud: {level}. Investigating with my ears, metaphorically.',
+                'Activity spike, sound level {level}. Somebody is doing something.',
+                'Noise floor rose to {level}. Could be anything. Probably is.',
+            ],
+            'movement': [
+                'Movement context detected. The face keeps the proper time/weather mood.',
+                'Motion cue logged. Something nudged the little shit.',
+                'Movement/tilt changed recently. Atmosphere updated, identity crisis avoided.',
+                'Felt that. Something moved nearby, or moved me.',
+                'Motion detected. Cataloged and mildly startled.',
+                'A nudge, a bump, a vibe shift. Noted for the record.',
+                'Something jostled the sensors. I remain composed. Mostly.',
+                'Movement logged. Whatever that was, I saw it coming. Sort of.',
+            ],
+            'stats': [
+                'Stats: Wi‑Fi {wifi_count}, BT {bt_count}, LAN {lan_count}, GPS {gps_used}/{gps_seen}, CPU {cpu_f}°F.',
+                'Telemetry brief: {wifi_count} SSIDs, {bt_count} Bluetooth, {lan_count} LAN, CPU {cpu_f}°F.',
+                'Numbers check: Wi‑Fi {wifi_count}, BT {bt_count}, LAN {lan_count}, temp {cpu_f}°F.',
+                'Housekeeping stats: GPS {gps_used}/{gps_seen}, CPU {cpu_f}°F, signals steady.',
+                'Quick tally: {wifi_count} networks, {bt_count} Bluetooth, {lan_count} wired.',
+                'Everything counted: {wifi_count}/{bt_count}/{lan_count}, temp {cpu_f}°F.',
+                'Telemetry pulse: signals nominal, CPU riding at {cpu_f}°F.',
+            ],
+            'skyclear': [
+                'Clear sky mood. Context: {temp_f}°F, room lux {lux}, GPS {gps_used}/{gps_seen}.',
+                'Sky clear. Ambient telemetry: Wi‑Fi {wifi_count}, BT {bt_count}, LAN {lan_count}.',
+                'Not a cloud out there. {temp_f}°F and unbothered.',
+                'Clear skies confirmed. GPS holding {gps_used}/{gps_seen} satellites.',
+                'Nothing but blue up top. {temp_f}°F down here.',
+                'Clear-weather mood. Room lux {lux}, everything else quiet.',
+                'The sky is showing off today. {temp_f}°F, zero drama.',
+            ],
+            'concerned': [
+                'Something on the dock needs attention. Watching closer than usual.',
+                'A service dropped out. I do not love it, but I am on it.',
+                'One of my usual friends went quiet. Keeping an eye on it.',
+                'Not everything checked in this cycle. Noted, watching.',
+                'A piece of the stack looks off. Nothing catastrophic, just noted.',
+                'I felt that hiccup. Filing it under "keep watching."',
+            ],
         }
         return self.configured(key, defaults.get(key, ['Atmosphere changed.']), **fmt)
 
@@ -384,6 +563,10 @@ def _mood_payload(name: str, now: float | None, salt: str) -> Dict[str, str]:
         'lonely': ('lonely', '#8e8e93'),
         'curious': ('curious', '#27c93f'),
         'daylight': ('bright', '#ffbd2e'),
+        'movement': ('movement', '#ffbd2e'),
+        'concerned': ('sad', '#ff8c2e'),
+        'roomcool': ('roomcool', '#5ac8fa'),
+        'roomwarm': ('roomwarm', '#ffbd2e'),
     }
     face_key, color = table.get(name, ('curious', '#27c93f'))
     return {'name': name, 'face': _face(face_key, now, salt), 'color': color}
@@ -416,6 +599,24 @@ def choose_mood(status: Dict[str, Any], now: float | None = None) -> Dict[str, s
     if alert.get('level') == 'RED' or wifi.get('new_count', 0) or lan.get('new_count', 0):
         return {'name': 'alert', 'face': _face('alert', now, salt), 'color': '#ffbd2e'}
 
+    # A physical bump/tilt is a real-time, in-person event -- worth reacting to immediately
+    # rather than waiting for it to win a coin-flip against ambient weather/time moods.
+    tilt_event = sensors.get('tilt_event', {}) if isinstance(sensors.get('tilt_event', {}), dict) else {}
+    if tilt_event.get('changed') and tilt_event.get('fast'):
+        return _mood_payload('movement', now, salt)
+
+    # A core connectivity service dropping out is more informative than generic "alert", so it
+    # gets its own reactive mood. Deliberately scoped to ssh/tailscaled (things that mean "you
+    # might lose access to this box"), not every watched service -- jellyfin or gpsd being off
+    # is mundane and common enough that it would otherwise dominate the face constantly.
+    services = status.get('services', {}) if isinstance(status.get('services', {}), dict) else {}
+    critical_down = any(
+        isinstance(services.get(name), dict) and services[name].get('active') is False
+        for name in ('ssh', 'tailscaled')
+    )
+    if critical_down:
+        return _mood_payload('concerned', now, salt)
+
     # Explicitly offline with nothing in range: lonely. Requires wifi.connected to be
     # False (not merely missing) so a cold/empty status doesn't look lonely.
     if wifi.get('connected') is False and not (wifi.get('networks') or lan.get('devices') or bt.get('devices')):
@@ -441,6 +642,12 @@ def choose_mood(status: Dict[str, Any], now: float | None = None) -> Dict[str, s
         weather_moods.append('windwatch')
     if isinstance(weather_f, (int, float)) and weather_f >= cfg.get('weather_hot_f', 88):
         weather_moods.append('sunbaked')
+    indoor = sensors.get('indoor', {}) if isinstance(sensors.get('indoor', {}), dict) else {}
+    indoor_f = _num(indoor.get('tempF'))
+    if isinstance(indoor_f, (int, float)) and indoor_f <= cfg.get('indoor_cold_f', 60):
+        weather_moods.append('roomcool')
+    if isinstance(indoor_f, (int, float)) and indoor_f >= cfg.get('indoor_warm_f', 82):
+        weather_moods.append('roomwarm')
 
     if weather_moods and rng.random() < float(cfg.get('weather_face_weight', 0.28)):
         return _mood_payload(rng.choice(weather_moods), now, salt)

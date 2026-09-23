@@ -414,19 +414,60 @@
     const L = a.layers || {}, cnt = k => (L[k] || []).length;
     el.innerHTML = `<div class="lvl ${(a.level || '').toLowerCase()}"><b>${esc(a.level || 'n/a')}</b><small>score ${a.score != null ? a.score : 0}</small></div><div class="lay"><span class="u">${cnt('urgent')}<small>urgent</small></span><span class="a">${cnt('advisory')}<small>advisory</small></span><span class="h">${cnt('hygiene')}<small>hygiene</small></span></div><div class="dim">${esc((a.reasons || []).slice(0, 2).join(' · '))}</div>`;
   }
-  let pulseT = 0;
+  let pulseT = 0, pulseFlash = 0, pulseLastPhase = 0;
+  /** Normalized PQRST shape, p in [0,1) = fraction of one heartbeat (one RR interval).
+      Proportions loosely follow a real ECG: a small P wave, sharp QRS spike, ST segment,
+      broad T wave, then a flat isoelectric rest before the next beat -- not a smooth
+      repeating sine, which is what made the old version look like a signal generator
+      rather than a heartbeat. */
+  function ecgShape(p) {
+    const seg = (a, b, fn) => (p >= a && p < b ? fn((p - a) / (b - a)) : null);
+    const ease = t => (1 - Math.cos(t * Math.PI)) / 2; // smooth in/out for bumps
+    let y;
+    y = seg(0.06, 0.14, t => ease(t) * 0.14); if (y != null) return y;                          // P wave
+    y = seg(0.14, 0.185, () => 0); if (y != null) return y;                                      // PR segment
+    y = seg(0.185, 0.205, t => -ease(t) * 0.12); if (y != null) return y;                        // Q dip
+    y = seg(0.205, 0.225, t => -0.12 + t * 1.32); if (y != null) return y;                        // R upstroke
+    y = seg(0.225, 0.245, t => 1.2 - t * 1.55); if (y != null) return y;                          // R downstroke into S
+    y = seg(0.245, 0.27, t => -0.35 + ease(t) * 0.35); if (y != null) return y;                   // S recovery
+    y = seg(0.27, 0.34, () => 0.05); if (y != null) return y;                                     // ST segment (slightly elevated)
+    y = seg(0.34, 0.5, t => 0.05 + Math.sin(t * Math.PI) * 0.22); if (y != null) return y;         // T wave
+    return 0; // diastolic rest
+  }
   function drawPulse(dt) {
     const cv = $('#deckPulse'); if (!cv) return; const { c, w, h } = setupCanvas(cv); c.clearRect(0, 0, w, h);
-    const last = state.samples[state.samples.length - 1] || {}, load = clamp((last.cpu || 8) / 100, .04, 1); pulseT += dt * (1 + load * 2.4);
-    const g = css('--green'); c.strokeStyle = g; c.lineWidth = 2; c.shadowColor = g; c.shadowBlur = 8; c.beginPath();
+    const last = state.samples[state.samples.length - 1] || {}, load = clamp((last.cpu || 8) / 100, .04, 1);
+    const bpm = Math.round(58 + load * 92);
+    pulseT += dt * (bpm / 60);
+    const phaseNow = pulseT % 1;
+    const crossedRWave = phaseNow < pulseLastPhase
+      ? (pulseLastPhase < 0.205 || phaseNow >= 0.205) // wrapped past 1.0 during this frame
+      : (pulseLastPhase < 0.205 && phaseNow >= 0.205);
+    if (crossedRWave) pulseFlash = 1; // R-wave just reached "now" (the right edge of the trace)
+    pulseLastPhase = phaseNow;
+    pulseFlash = Math.max(0, pulseFlash - dt * 2.6);
+    const beatsVisible = 3, pxPerBeat = w / beatsVisible;
+    const col = load >= 0.85 ? css('--red') : load >= 0.6 ? css('--yellow') : css('--green');
+    c.strokeStyle = col; c.lineWidth = 1.8; c.lineJoin = 'round'; c.shadowColor = col; c.shadowBlur = 7; c.beginPath();
+    const midY = h * 0.56, amp = h * 0.4;
     for (let x = 0; x <= w; x += 2) {
-      const ph = ((x / 90) - pulseT * 1.4) % 1, p = ph < 0 ? ph + 1 : ph; let y = 0;
-      if (p > .42 && p < .46) y = -(p - .42) / .04; else if (p >= .46 && p < .5) y = -1 + (p - .46) / .04 * 1.4; else if (p >= .5 && p < .54) y = .4 - (p - .5) / .04 * .4; else if (p > .62 && p < .74) y = -.22 * Math.sin((p - .62) / .12 * Math.PI);
-      y += Math.sin(x * .05 + pulseT * 3) * .02;
-      const py = h / 2 + y * (h * (.22 + load * .3)); x ? c.lineTo(x, py) : c.moveTo(x, py);
+      const age = (w - x) / pxPerBeat;
+      let p = (pulseT - age) % 1; if (p < 0) p += 1;
+      const jitter = Math.sin(x * 0.35 + pulseT * 9) * 0.006; // faint baseline noise, not a clean signal-generator line
+      const y = midY - (ecgShape(p) + jitter) * amp;
+      x ? c.lineTo(x, y) : c.moveTo(x, y);
     }
     c.stroke(); c.shadowBlur = 0;
-    c.fillStyle = 'rgba(200,220,210,.6)'; c.font = '10px ' + getComputedStyle(document.body).fontFamily; c.textAlign = 'right'; c.fillText(Math.round(load * 100) + '% load', w - 6, 12);
+    // beat flash: a soft thump at the right edge exactly when the R-wave arrives
+    if (pulseFlash > 0.02) {
+      const gl = c.createRadialGradient(w - 4, midY - amp * 1.08, 0, w - 4, midY - amp * 1.08, 16);
+      gl.addColorStop(0, col + Math.round(pulseFlash * 200).toString(16).padStart(2, '0')); gl.addColorStop(1, col + '00');
+      c.fillStyle = gl; c.beginPath(); c.arc(w - 4, midY - amp * 1.08, 16, 0, TAU); c.fill();
+    }
+    c.fillStyle = 'rgba(200,220,210,.7)'; c.font = '10px ' + getComputedStyle(document.body).fontFamily;
+    c.textAlign = 'right'; c.fillText(Math.round(load * 100) + '% load', w - 6, h - 6);
+    c.fillStyle = col; c.font = 'bold 15px ' + getComputedStyle(document.body).fontFamily; c.textAlign = 'left';
+    c.fillText(bpm + ' bpm', 6, 15);
   }
 
   /* ------------------------------------------------------------------ interaction (hover / drag) */

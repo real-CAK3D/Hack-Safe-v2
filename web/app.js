@@ -80,16 +80,6 @@ const MAP_ANCHORS={
 function mapAnchorPercent(marker){ const a=MAP_ANCHORS[marker.name]; return a ? [a[0]/PROTON_MAP_W*100, a[1]/PROTON_MAP_H*100] : geoToMapPercent(marker.lat, marker.lon); }
 function tiltVisual(gpio={}, tilt={}){ const label=String(gpio.tiltOrientation||gpio.tiltLabel||tilt.orientation||'UNKNOWN'); const raw=gpio.tiltRaw ?? gpio.tilt ?? tilt.raw; const levelRaw=gpio.tiltLevelRaw ?? tilt.level_raw ?? 'n/a'; const angle=Number(gpio.tiltAngle ?? tilt.angle ?? (label==='LEVEL'?0:28)); const visualAngle=label==='LEVEL'?0:-angle; const side=label==='LEVEL'?'LEVEL':label==='TILTED'?'TILTED':'UNKNOWN'; return `<div id="tiltStage" class="tilt-stage ${tilt.changed?'shake':''}"><div id="tiltLabel" class="tilt-label">${label} // raw ${raw ?? 'n/a'} // level raw ${levelRaw}</div><div id="tiltBoard" class="tilt-board" style="transform:rotate(${visualAngle}deg)"><span></span></div><div class="tilt-axis"><b>R</b><em></em><b>L</b></div><small id="tiltReadout">LIVE raw=${raw ?? 'n/a'} levelRaw=${levelRaw} sensor=${angle}° display=${visualAngle}° age=${tilt.age_s!=null?Number(tilt.age_s).toFixed(1)+'s':'n/a'}</small></div>`; }
 function applyTilt(data={}){ const gpio=data.gpio||{}, tilt=data.tilt_event||{}; const raw=gpio.tiltRaw ?? gpio.tilt ?? tilt.raw; const levelRaw=gpio.tiltLevelRaw ?? tilt.level_raw ?? 'n/a'; const label=String(gpio.tiltOrientation||gpio.tiltLabel||tilt.orientation||'UNKNOWN'); const angle=Number(gpio.tiltAngle ?? tilt.angle ?? (label==='LEVEL'?0:28)); const visualAngle=label==='LEVEL'?0:-angle; const board=document.getElementById('tiltBoard'), lab=document.getElementById('tiltLabel'), read=document.getElementById('tiltReadout'), stage=document.getElementById('tiltStage'); if(board) board.style.transform=`rotate(${visualAngle}deg)`; if(lab) lab.textContent=`${label} // raw ${raw ?? 'n/a'} // level raw ${levelRaw}`; if(read) read.textContent=`LIVE raw=${raw ?? 'n/a'} levelRaw=${levelRaw} sensor=${angle}° display=${visualAngle}° ${data.live?'fast GPIO':''}`; if(stage){ stage.classList.toggle('shake', !!tilt.changed); stage.classList.toggle('tilt-left', label==='TILTED'); stage.classList.toggle('tilt-right', false); } }
-function gpsBlipHtml(used){
-  const n=Math.max(0, Math.min(24, Number(used)||0));
-  const pts=[];
-  for(let i=0;i<n;i++){
-    const a=(i*137.508)%360, r=20+((i*17)%27);
-    const x=50+Math.cos(a*Math.PI/180)*r, y=50+Math.sin(a*Math.PI/180)*r;
-    pts.push(`<i class="gps-blip" style="left:${x.toFixed(1)}%;top:${y.toFixed(1)}%;animation-delay:${((a/360)*-6).toFixed(2)}s"></i>`);
-  }
-  return pts.join('');
-}
 function satelliteStrengthGrid(sats=[]){
   const rows=(sats||[]).slice().sort((a,b)=>(b.used?1:0)-(a.used?1:0) || Number(b.ss||0)-Number(a.ss||0));
   if(!rows.length) return '<div class="gps-sat-list"><b>INDIVIDUAL SATELLITE STRENGTH</b><span>waiting for SKY signal</span></div>';
@@ -676,6 +666,14 @@ async function recheckWeatherKey(){
   await fetch('/api/status/slow?force=1',{cache:'no-store'}).catch(()=>{});
   await refresh();
 }
+let wxRadarFilter='now';
+function setWxRadarFilter(mode, btn){
+  wxRadarFilter=mode;
+  const wrap=document.getElementById('weatherSimViz'); if(!wrap) return;
+  wrap.querySelectorAll('.rf-btn').forEach(b=>b.classList.toggle('active', b===btn));
+  const radar=wrap.querySelector('.weather-radar'); if(radar) radar.dataset.rf=mode;
+  const cv=wrap.querySelector('.weather-radar-canvas'); if(cv && cv.__wxData) cv.__wxData.rf=mode;
+}
 function renderWeatherSim(weather={}, light={}){
   const el=document.getElementById('weatherSimViz'); if(!el) return;
   const day=weatherDayState(weather);
@@ -689,11 +687,11 @@ function renderWeatherSim(weather={}, light={}){
   const cls=storm?'storm':rain?'rain':snow?'snow':cloud?'cloud':clear?'clear':'idle';
   const drops=Array.from({length: rain?28:snow?22:0},(_,i)=>`<i style="--x:${(i*37)%100}%;--d:${(i%9)*-.18}s;--l:${18+(i%5)*8}px"></i>`).join('');
   const stars=Array.from({length:18},(_,i)=>`<i style="--x:${(i*53)%100}%;--y:${10+((i*29)%62)}%;--d:${(i%6)*.35}s"></i>`).join('');
-  const forecast=(weather.forecast||[]).slice(0,3).map(d=>`<div><b>${(d.date||'').slice(5)||'day'}</b><span>${weatherIcon(d.summary, day.isNight)} ${d.highF??'?'}/${d.lowF??'?'}°F</span><small>${d.summary||''} rain ${d.chanceRain??0}% snow ${d.chanceSnow??0}%</small></div>`).join('');
+  const forecast=(weather.forecast||[]).slice(0,5).map(d=>`<div class="fx-day"><b>${(d.date||'').slice(5)||'day'}</b><span>${weatherIcon(d.summary, day.isNight)} ${d.highF??'?'}°/${d.lowF??'?'}°F</span><small>${escapeHtml(d.summary||'')} // rain ${d.chanceRain??0}% snow ${d.chanceSnow??0}%</small></div>`).join('');
   const xy=weatherTileXY(weather.lat, weather.lon, 6);
   const layers=(weather.radar?.layers||['precipitation_new','clouds_new','wind_new']).slice(0,3);
   const tiles=weather.radar?.configured && xy ? layers.map((layer,i)=>`<img class="radar-layer radar-layer-${i}" src="/api/weather/tile/${layer}/${xy.z}/${xy.x}/${xy.y}.png" alt="${layer} weather radar tile">`).join('') : '';
-  const radarNote=weather.radar?.configured ? `OpenWeather radar: ${layers.join(' / ')}` : 'OpenWeather key missing // simulated sweep radar';
+  const radarNote=weather.radar?.configured ? `OpenWeather live tile: ${layers.join(' / ')} (Now only)` : 'OpenWeather key missing // stylized wind-tracked radar';
   const keyStatusHtml=`<span id="weatherKeyStatus">${escapeHtml(weatherKeyStatusText)}</span> <button class="tiny-btn" onclick="recheckWeatherKey()">${weatherKeyChecking?'Checking…':'Recheck Key'}</button>`;
   const phase=day.isNight?'night':'day';
   const temp=Number(weather.tempF), hum=Number(weather.humidity), wind=Number(weather.windMph||0), rainChance=Math.max(...(weather.forecast||[]).slice(0,3).map(d=>Number(d.chanceRain||0)),0);
@@ -705,7 +703,10 @@ function renderWeatherSim(weather={}, light={}){
   el.className=`weather-sim weather-state-${cls} weather-${phase}`;
   el.style.setProperty('--sun-x', `${12 + day.progress*.76}%`);
   el.style.setProperty('--sun-y', `${62 - Math.sin((day.progress/100)*Math.PI)*44}%`);
-  el.innerHTML=`<div class="weather-sky"><div class="weather-stars">${stars}</div><div class="weather-sun"></div><div class="weather-moon"></div><div class="weather-cloud c1"></div><div class="weather-cloud c2"></div><div class="weather-rain">${drops}</div><div class="weather-lightning"></div><div class="weather-ground"></div></div><div class="weather-readout sec-readout"><div class="sec-summary ${wxRisk.toLowerCase()}"><b>WEATHER OPS ${wxRisk}</b><span>${weatherIcon(summary, day.isNight)} ${escapeHtml(summary)} // ${weather.available?(weather.tempF ?? 'n/a')+'°F':'waiting'}</span></div><div class="metric-grid">${metricCell('TEMP', weather.available?`${weather.tempF ?? 'n/a'}°F`:'n/a', summary)}${metricCell('HUMIDITY', weather.available?`${weather.humidity ?? 'n/a'}%`:'n/a', 'outside weather')}${metricCell('WIND', weather.available?`${weather.windMph ?? 'n/a'} mph`:'n/a', `rain risk ${rainChance}%`)}${metricCell('LIGHT', light.available?`${light.lux} lux`:'n/a', 'room sensor')}</div>${wxTable}</div><div class="weather-radar"><div class="radar-tile">${tiles}<i></i><b></b><span></span></div><small>${radarNote}</small><small class="weather-key-row">${keyStatusHtml}</small></div><div class="forecast-strip">${forecast||'<div><b>forecast</b><span>waiting</span><small>weather cache warmup</small></div>'}</div><div class="weather-waves">${liveWave('OUTSIDE TEMP', weatherTempHist, Number.isFinite(temp)?`${temp.toFixed(1)}°F`:'n/a', temp>=88?'var(--red)':temp<=35?'var(--cyan)':'var(--green)')}${liveWave('HUMIDITY', weatherHumidityHist, Number.isFinite(hum)?`${hum.toFixed(0)}%`:'n/a', 'var(--blue)')}${liveWave('WIND', weatherWindHist, `${wind||0} mph`, wind>=25?'var(--yellow)':'var(--purple)')}</div>`;
+  const rfBtn=m=>`<button class="rf-btn${wxRadarFilter===m?' active':''}" onclick="setWxRadarFilter('${m}',this)">${m[0].toUpperCase()+m.slice(1)}</button>`;
+  el.innerHTML=`<div class="weather-sky"><div class="weather-stars">${stars}</div><div class="weather-sun"></div><div class="weather-moon"></div><div class="weather-cloud c1"></div><div class="weather-cloud c2"></div><div class="weather-rain">${drops}</div><div class="weather-lightning"></div><div class="weather-ground"></div></div><div class="weather-readout sec-readout"><div class="sec-summary ${wxRisk.toLowerCase()}"><b>WEATHER OPS ${wxRisk}</b><span>${weatherIcon(summary, day.isNight)} ${escapeHtml(summary)} // ${weather.available?(weather.tempF ?? 'n/a')+'°F':'waiting'}</span></div><div class="metric-grid">${metricCell('TEMP', weather.available?`${weather.tempF ?? 'n/a'}°F`:'n/a', summary)}${metricCell('HUMIDITY', weather.available?`${weather.humidity ?? 'n/a'}%`:'n/a', 'outside weather')}${metricCell('WIND', weather.available?`${weather.windMph ?? 'n/a'} mph`:'n/a', `rain risk ${rainChance}%`)}${metricCell('LIGHT', light.available?`${light.lux} lux`:'n/a', 'room sensor')}</div>${wxTable}</div><div class="weather-radar" data-rf="${wxRadarFilter}"><div class="radar-filters">${rfBtn('recent')}${rfBtn('now')}${rfBtn('upcoming')}</div><div class="radar-tile">${tiles}<canvas class="weather-radar-canvas"></canvas></div><small>${radarNote}</small><small class="weather-key-row">${keyStatusHtml}</small></div><div class="forecast-strip">${forecast||'<div class="fx-day"><b>forecast</b><span>waiting</span><small>weather cache warmup</small></div>'}</div><div class="weather-waves">${liveWave('OUTSIDE TEMP', weatherTempHist, Number.isFinite(temp)?`${temp.toFixed(1)}°F`:'n/a', temp>=88?'var(--red)':temp<=35?'var(--cyan)':'var(--green)')}${liveWave('HUMIDITY', weatherHumidityHist, Number.isFinite(hum)?`${hum.toFixed(0)}%`:'n/a', 'var(--blue)')}${liveWave('WIND', weatherWindHist, `${wind||0} mph`, wind>=25?'var(--yellow)':'var(--purple)')}</div>`;
+  const radarCanvas=el.querySelector('.weather-radar-canvas');
+  if(radarCanvas) radarCanvas.__wxData={cls, windMph:wind, windDir:Number.isFinite(Number(weather.windDir))?Number(weather.windDir):0, precipMm:Number(weather.precipMm)||0, rf:wxRadarFilter};
 }
 function renderGlobalMap(s){
   const el=document.getElementById('globalMapViz'); if(!el) return;
@@ -1209,11 +1210,11 @@ function renderSensors(sens){
   pushHist(indoorTempHist, Math.min(tempF/110*100,100)); pushHist(humidityHist, humidity); pushHist(lightHist, Math.min(lux/400*100,100)); pushHist(gpsSatsHist, sats); pushHist(gpsSignalHist, best?signalPct:skyPct);
   const root=document.getElementById('sensorViz');
   if(!root.querySelector('.radar')){
-    root.innerHTML = `<div class="sensor-top"><div class="radar"><i class="radar-pulse"></i><span class="gps-blips"></span><b class="gps-mode"></b><span class="gps-sats"></span></div><div id="weatherCard" class="weather"></div></div><div id="sensorWaves" class="viz-stack"></div>`;
+    root.innerHTML = `<div class="sensor-top"><div class="radar canvas-driven"><i class="radar-pulse"></i><canvas class="gps-radar-canvas"></canvas><b class="gps-mode"></b><span class="gps-sats"></span></div><div id="weatherCard" class="weather"></div></div><div id="sensorWaves" class="viz-stack"></div>`;
   }
   const blipCount=fixed ? used : Math.min(visible, 12);
-  const blips=root.querySelector('.gps-blips');
-  if(blips && blips.dataset.count !== String(blipCount)) { blips.dataset.count=String(blipCount); blips.innerHTML=gpsBlipHtml(blipCount); }
+  const gpsCanvas=root.querySelector('.gps-radar-canvas');
+  if(gpsCanvas) gpsCanvas.__gpsData={count:blipCount, sats:gps.satellites||[], fixed};
   root.querySelector('.radar')?.classList.toggle('gps-searching', !fixed && visible>0);
   root.querySelector('.gps-mode').textContent = gps.modeLabel||'NO FIX';
   root.querySelector('.gps-sats').textContent = `${used}/${visible}`;

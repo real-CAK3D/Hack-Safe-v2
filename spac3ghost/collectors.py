@@ -1370,6 +1370,7 @@ def weather_status(gps: Dict[str, Any] | None = None) -> Dict[str, Any]:
         weather = {
             'available': False, 'source': source, 'location': None, 'lat': lat, 'lon': lon,
             'summary': None, 'tempC': None, 'tempF': None, 'humidity': None, 'windMph': None,
+            'windDir': None, 'precipMm': None,
             'forecast': [], 'sunrise': None, 'sunset': None, 'moonrise': None, 'moonset': None, 'radar': {'provider': 'OpenWeatherMap', 'configured': bool(_openweather_key()), 'layers': ['precipitation_new', 'clouds_new', 'wind_new'], 'tile_proxy': '/api/weather/tile/{layer}/{z}/{x}/{y}.png'},
             'provider': 'wttr.in + optional OpenWeatherMap tiles', 'error': None,
         }
@@ -1416,6 +1417,8 @@ def weather_status(gps: Dict[str, Any] | None = None) -> Dict[str, Any]:
                 'summary': desc[0].get('value') if desc else None, 'tempC': temp_c,
                 'tempF': round(temp_c * 9 / 5 + 32, 1) if temp_c is not None else None,
                 'humidity': humidity, 'windMph': _float_or_none(current.get('windspeedMiles')),
+                'windDir': _float_or_none(current.get('winddirDegree')),
+                'precipMm': _float_or_none(current.get('precipMM')),
                 'forecast': forecast,
             })
         except Exception as exc:
