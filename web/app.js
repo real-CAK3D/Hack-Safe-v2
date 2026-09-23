@@ -440,6 +440,7 @@ async function refresh(){
     safeRender('Cyber Test Kit', ()=>renderCyberTestKit(s));
     safeRender('AI Chat', ()=>renderAIChat(lastAIChat));
     safeRender('CYD Buddy', ()=>renderCydBuddy(s.cyd_buddy||{}));
+    safeRender('Pwnagotchi Dock', ()=>renderPwnagotchiDock(s.pwnagotchi_dock||{}));
     safeRender('Open Tools', ()=>renderOpenTools(s));
     safeRender('Weather companion', ()=>renderWeatherSim(sens.weather||{}, sens.light||{}));
     safeRender('System', ()=>renderSystem(sys));
@@ -509,6 +510,36 @@ function renderCydBuddy(cyd={}){
   ].join('');
   const settings=renderCydSettingsPanel(cyd);
   el.innerHTML=`${dock}<div class="cyd-grid">${statGrid}</div>${settings}<div class="cyd-buddy-panels"><section><h3>Current Voice</h3><p>${escapeHtml(phrases.current||cyd.message||'quiet')}</p><small>${escapeHtml(phrases.personality||'personality n/a')} // scroll ${escapeHtml(phrases.scroll_ms??'n/a')}ms // SD phrases ${phrases.sd_lookup?'on':'off'}</small></section><section><h3>Tiny AI Insight</h3><p>${escapeHtml(ai.insight||learn.summary||'learning state pending')}</p><small>${escapeHtml(ai.daily_summary||'daily summary pending')}</small></section><section><h3>Memory Bank</h3><ul>${memories}</ul><small>${escapeHtml(mem.random||'')}</small></section></div><div class="cyd-leases">${leaseHtml}</div>`;
+}
+
+// Refresh the proxied Pwnagotchi face without rebuilding the whole card, so the
+// image swaps in place on the 15s poll (cache-busted so we get the current frame).
+function refreshPwnFace(){
+  const img=document.getElementById('pwnDockFace');
+  if(img && img.dataset.online==='1'){ img.src='/api/pwnagotchi/ui?t='+Date.now(); }
+}
+
+function renderPwnagotchiDock(pwn={}){
+  const el=document.getElementById('pwnagotchiDockViz'); if(!el) return;
+  const online=!!pwn.reachable;
+  const authed=!!pwn.authed;
+  const label=pwn.dock_label||(online?'ONLINE':'OFFLINE');
+  const cls=online?(authed?'connected':'waiting'):'waiting';
+  const age=pwn.age_s==null?(online?'just now':'never'):`${Math.max(0,Math.round(pwn.age_s))}s ago`;
+  const host=pwn.host||(Array.isArray(pwn.hosts)?pwn.hosts[0]:'')||'no route';
+  const webUrl=pwn.web_url||'';
+  const face=online
+    ? `<img id="pwnDockFace" class="pwn-face" data-online="1" src="/api/pwnagotchi/ui?t=${Date.now()}" alt="Pwnagotchi face" onerror="this.dataset.online='0'; this.replaceWith(Object.assign(document.createElement('div'),{className:'pwn-face pwn-face-empty',textContent:'face unavailable — check web-UI login'}));">`
+    : `<div class="pwn-face pwn-face-empty">${escapeHtml(label==='PROBING'?'probing…':'offline — not reachable on the tailnet or USB')}</div>`;
+  const dock=`<div class="cyd-dock ${cls}"><div class="cyd-core"><b>${escapeHtml(label)}</b><span>${escapeHtml(pwn.name||'CAK3DAGOTCHI')} // ${escapeHtml(host)} // last seen ${escapeHtml(age)}${pwn.latency_ms!=null?` // ${escapeHtml(pwn.latency_ms)}ms`:''}</span>${!authed&&online?'<small>Reachable, but the web-UI login was rejected. Set SPAC3GHOST_PWN_USER / SPAC3GHOST_PWN_PASS (or data/config.json) to read stats and the face.</small>':''}</div></div>`;
+  const grid=`<div class="cyd-grid">${metricCell('Networks seen', pwn.networks_seen||(authed?'0':'n/a'), 'APs this session')}${metricCell('Handshakes', pwn.handshakes||(authed?'0':'n/a'), 'captured')}${metricCell('Mode', pwn.mode||pwn.status_text||'n/a', 'AI posture')}${metricCell('Channel', pwn.channel||'n/a', 'current')}${metricCell('Uptime', pwn.uptime||'n/a', 'since boot')}${metricCell('Route', host, `web :${pwn.port||8080}`)}</div>`;
+  const actions=`<div class="pwn-dock-actions">${webUrl?`<a class="button-link open-now" href="${escapeHtml(webUrl)}" target="_blank" rel="noopener noreferrer">Open Web UI</a>`:''}<button onclick="refreshPwnDock()">Refresh</button></div>`;
+  el.innerHTML=`<div class="pwn-dock ${cls}"><div class="pwn-face-wrap">${face}</div><div class="pwn-dock-body">${dock}${grid}${actions}</div></div>`;
+}
+
+async function refreshPwnDock(){
+  try{ const r=await fetch('/api/pwnagotchi/dock',{cache:'no-store'}); const d=await r.json(); if(lastStatus) lastStatus.pwnagotchi_dock=d; renderPwnagotchiDock(d); }
+  catch(e){ /* keep last render */ }
 }
 
 function renderCydSettingsPanel(cyd={}){
@@ -857,7 +888,7 @@ function renderHardwareDocks(hw={}){
   const cards=docks.map(d=>{
     const cand=[...(d.candidates||[]),...(d.serials||[]),...(d.devices||[])].slice(0,4).map(x=>`<code>${escapeHtml(x)}</code>`).join('') || '<small>no direct device match yet</small>';
     const blocked=(d.blocked_actions||[]).slice(0,4).map(escapeHtml).join(', ');
-    const action=d.id==='pwnagotchi-zero2'?`showTab('lab'); setTimeout(()=>document.querySelector('.lab-workflows-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)`:d.id==='cyd-buddy'?`showTab('externals'); setTimeout(()=>document.querySelector('.cyd-buddy-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)`:d.id.includes('esp32')||d.id.includes('bruce')?`companionAction('bruce','detect')`:d.id==='sdr-receiver'?`labSoftwareAction('sdrsuite','check')`:d.id==='ir-receiver'?`irAction('detect')`:d.id==='nfc-rfid-radio'?`nfcRfidAction('detect')`:`showTab('lab'); setTimeout(()=>document.querySelector('.safety-boundary-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)`;
+    const action=d.id==='pwnagotchi-zero2'?`showTab('externals'); setTimeout(()=>document.querySelector('.pwnagotchi-dock-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)`:d.id==='cyd-buddy'?`showTab('externals'); setTimeout(()=>document.querySelector('.cyd-buddy-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)`:d.id.includes('esp32')||d.id.includes('bruce')?`companionAction('bruce','detect')`:d.id==='sdr-receiver'?`labSoftwareAction('sdrsuite','check')`:d.id==='ir-receiver'?`irAction('detect')`:d.id==='nfc-rfid-radio'?`nfcRfidAction('detect')`:`showTab('lab'); setTimeout(()=>document.querySelector('.safety-boundary-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)`;
     const extra=d.id==='nfc-rfid-radio'?`<button onclick="nfcRfidAction('read-once')">Read Owned Tag</button><button onclick="nfcRfidWriteOwned()">Write Owned Tag</button>`:d.id==='ir-receiver'?`<button onclick="irAction('receive-once')">Receive IR</button>`:'';
     return `<div class="companion-card dock-card ${d.detected?'installed':'missing'}"><div class="companion-head"><b>${escapeHtml(d.label)}</b><span>${d.detected?'detected':'waiting'}</span></div><p>${escapeHtml(d.readiness||'')}</p><div class="companion-meta"><span>${escapeHtml(d.kind||'hardware')}</span><span>${escapeHtml(d.home||'Lab')}</span></div><div class="dock-candidates">${cand}</div><div class="companion-actions"><button onclick="${action}">Detect / Open</button>${extra}</div><small>guarded: ${blocked}</small></div>`;
   }).join('') || '<div class="scanline-note">No hardware dock status yet.</div>';
@@ -1421,4 +1452,4 @@ async function loadSettings(){ const r=await fetch('/api/config',{cache:'no-stor
 async function saveSettings(){ try{ const config=readSettingsJson(); const d=await postJson('/api/config',{config}); document.getElementById('settingsStatus').textContent=d.ok?'Settings saved. Plugins reloaded.':`Save failed: ${d.error||'unknown'}`; if(d.ok) currentConfig=config; await refresh(); renderFaceMoodSettings(currentConfig, lastStatus?.faces||{}); }catch(err){ document.getElementById('settingsStatus').textContent=`Save failed: ${err}`; } }
 async function togglePlugin(name, enabled){ if(!currentConfig) await loadSettings(); currentConfig.plugins=currentConfig.plugins||{}; currentConfig.plugins[name]=!!enabled; document.getElementById('settingsJson').value=JSON.stringify(currentConfig,null,2); const d=await postJson('/api/config',{config:currentConfig}); document.getElementById('pluginSwitches').classList.toggle('saving', false); if(!d.ok) alert(`Plugin save failed: ${d.error||'unknown'}`); await refresh(); }
 
-document.title='Hack-Safe Spac3-Gh0st'; applyTheme(currentTheme); refreshAIChatStatus(); startPwnFaceCycle(); let initialTab=(location.hash||'#dash').slice(1); if(initialTab==='godseye') initialTab='vision'; if(['dash','deck','systems','signals','vision','externals','plugins','lab','settings'].includes(initialTab)) showTab(initialTab); refresh(); setInterval(refresh,15000); setInterval(pollTilt,1500);
+document.title='Hack-Safe Spac3-Gh0st'; applyTheme(currentTheme); refreshAIChatStatus(); startPwnFaceCycle(); let initialTab=(location.hash||'#dash').slice(1); if(initialTab==='godseye') initialTab='vision'; if(['dash','deck','systems','signals','vision','externals','plugins','lab','settings'].includes(initialTab)) showTab(initialTab); refresh(); setInterval(refresh,15000); setInterval(pollTilt,1500); setInterval(refreshPwnFace,7000);
