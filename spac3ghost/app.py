@@ -23,7 +23,7 @@ from .pwnagotchi_dock import fetch_ui_png, pwn_dock_status
 from .personality import Spac3Voice, choose_mood, event_from_status, merged_faces
 from .paths import ROOT, WEB_DIR
 from .plugins import PluginManager
-from .vision import SNAP_DIR, analyze_current_frame, clear_vision_history, jpeg_frame, vision_history
+from .vision import SNAP_DIR, analyze_current_frame, clear_vision_history, delete_vision_history_entry, jpeg_frame, vision_history
 
 WEB = WEB_DIR
 EVENTS = []
@@ -91,7 +91,11 @@ GODSEYE_API_PREFIXES = (
     '/api/radio', '/api/firms', '/api/celestrak', '/api/launches', '/api/gbfs',
     # God’s Eye Vite proxy APIs used by OSM/Google/traffic/annotation layers.
     # These include POST endpoints, so proxy_godseye must preserve method/body.
-    '/api/overpass', '/api/route', '/api/terrain/heights', '/api/adsbdb'
+    '/api/overpass', '/api/route', '/api/terrain/heights', '/api/adsbdb',
+    # Confirmed against gods-eye-view's own vite.config.js middleware mounts. Anything missing
+    # here falls through to Hack-Safe's own /api/ router, which CSRF-rejects it as a cross-origin
+    # request instead of proxying it (that's the "error cross origin" the globe UI shows).
+    '/api/openai', '/api/realtime', '/api/military-installations', '/api/weather-effects'
 )
 GODSEYE_DEV_PREFIXES = ('/@vite/', '/src/', '/node_modules/', '/cesium/', '/pin.svg', '/location.svg', '/visual-presets.svg')
 
@@ -692,6 +696,14 @@ class Handler(BaseHTTPRequestHandler):
             result = clear_vision_history()
             add_event('camera', f"Vision history cleared: {result.get('removed_rows', 0)} rows / {result.get('removed_snapshots', 0)} snapshots removed.")
             return json_response(self, result)
+        if path == '/api/vision/history/delete':
+            body = read_json_body(self)
+            try:
+                ts = int(body.get('ts'))
+            except (TypeError, ValueError):
+                return json_response(self, {'ok': False, 'error': 'ts (unix timestamp) is required'}, code=400)
+            result = delete_vision_history_entry(ts)
+            return json_response(self, result, code=200 if result.get('ok') else 404)
         if path == '/api/sensors/tilt/calibrate':
             body = read_json_body(self)
             raw = body.get('raw') if 'raw' in body else None

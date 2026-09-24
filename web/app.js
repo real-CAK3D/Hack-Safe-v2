@@ -366,7 +366,7 @@ function showAction(preId,d){ /* controls no longer show text dumps under button
 async function refreshCameraFrame(force=false){
   const img=document.getElementById('cameraFeed');
   const pulse=document.getElementById('cameraPulse');
-  if(!img || cameraInflight || (!force && activeTab !== 'vision')) return;
+  if(!img || cameraInflight || (!force && activeTab !== 'externals')) return;
   cameraInflight=true;
   img.classList.add('loading');
   const started=performance.now();
@@ -400,7 +400,7 @@ async function refreshCameraFrame(force=false){
 }
 function scheduleCamera(s){
   const enabled=!!s?.vision?.enabled;
-  const shouldRun=activeTab==='vision';
+  const shouldRun=activeTab==='externals';
   const key=`${enabled}:${shouldRun}:${activeCameraFeed}`;
   if(key === cameraEnabled && cameraTimer) return;
   cameraEnabled=key;
@@ -1301,7 +1301,7 @@ function renderVision(cam, history={}){
   document.getElementById('visionDetections').textContent=dets.length?dets.map(d=>`${d.label} ${(d.confidence*100).toFixed(1)}% [${(d.xyxy||[]).join(', ')}]`).join('\n'):(cam.last_analysis?.error||'No YOLO detections yet. Hit Run YOLO Scan.');
   const histEl=document.getElementById('visionHistoryViz');
   if(histEl){
-    const rows=(history.items||[]).slice(0,8).map(h=>`<div class="vision-history-row">${h.snapshot?`<img src="${h.snapshot}" alt="vision snapshot">`:''}<div><b>${eventTime(h.ts)}</b><small>${(h.labels||[]).join(', ')||'no detections'} // ${h.elapsed_s||0}s</small></div></div>`).join('') || '<div class="scanline-note">No YOLO scan history yet.</div>';
+    const rows=(history.items||[]).slice(0,8).map(h=>`<div class="vision-history-row">${h.snapshot?`<img src="${h.snapshot}" alt="vision snapshot">`:''}<div><b>${eventTime(h.ts)}</b><small>${(h.labels||[]).join(', ')||'no detections'} // ${h.elapsed_s||0}s</small></div><button class="vision-history-del" title="Delete this entry" onclick="deleteVisionHistoryEntry(${h.ts})">×</button></div>`).join('') || '<div class="scanline-note">No YOLO scan history yet.</div>';
     histEl.innerHTML=rows;
   }
 }
@@ -1321,6 +1321,7 @@ async function toggleService(name){ const id=name==='syncthing'?'syncthingButton
 async function toggleVision(){ const enabled=!(lastStatus?.vision?.enabled??currentConfig?.vision?.enabled); setBusy('visionButton',true,enabled?'Arming...':'Disarming...'); setBusy('visionButton2',true,enabled?'Arming...':'Disarming...'); const d=await postJson('/api/camera/vision',{enabled}); showAction('cameraControl',d); setBusy('visionButton',false); setBusy('visionButton2',false); cameraEnabled=null; refreshCameraFrame(true); await refresh(); }
 async function analyzeVision(){ setBusy('analyzeButton',true,`Scanning ${activeCameraFeed}...`); const d=await postJson('/api/camera/analyze',{feed:activeCameraFeed}); document.getElementById('visionDetections').textContent=JSON.stringify(d,null,2); setBusy('analyzeButton',false); refreshCameraFrame(true); await refresh(); }
 async function clearVisionHistory(){ if(!confirm('Delete captured Vision history and saved snapshot JPGs from this Pi?')) return; const d=await postJson('/api/vision/history/clear',{}); alert(d.ok?`Vision history cleared: ${d.removed_rows||0} rows / ${d.removed_snapshots||0} snapshots.`:(d.error||'Clear failed')); await refresh(); renderVision(lastStatus?.vision||{}, lastStatus?.vision_history||{}); }
+async function deleteVisionHistoryEntry(ts){ const d=await postJson('/api/vision/history/delete',{ts}); if(!d.ok){ alert(d.error||'Delete failed'); return; } if(lastStatus) lastStatus.vision_history={items:d.items||[], count:d.count||0, available:true}; renderVision(lastStatus?.vision||{}, lastStatus?.vision_history||{}); }
 async function calibrateTiltLevel(){ const d=await postJson('/api/sensors/tilt/calibrate',{}); alert(d.ok?d.message:(d.error||'Tilt calibration failed')); await pollTilt(); await refresh(); }
 
 async function wifiPskAction(ssid, action){
@@ -1452,4 +1453,4 @@ async function loadSettings(){ const r=await fetch('/api/config',{cache:'no-stor
 async function saveSettings(){ try{ const config=readSettingsJson(); const d=await postJson('/api/config',{config}); document.getElementById('settingsStatus').textContent=d.ok?'Settings saved. Plugins reloaded.':`Save failed: ${d.error||'unknown'}`; if(d.ok) currentConfig=config; await refresh(); renderFaceMoodSettings(currentConfig, lastStatus?.faces||{}); }catch(err){ document.getElementById('settingsStatus').textContent=`Save failed: ${err}`; } }
 async function togglePlugin(name, enabled){ if(!currentConfig) await loadSettings(); currentConfig.plugins=currentConfig.plugins||{}; currentConfig.plugins[name]=!!enabled; document.getElementById('settingsJson').value=JSON.stringify(currentConfig,null,2); const d=await postJson('/api/config',{config:currentConfig}); document.getElementById('pluginSwitches').classList.toggle('saving', false); if(!d.ok) alert(`Plugin save failed: ${d.error||'unknown'}`); await refresh(); }
 
-document.title='Hack-Safe Spac3-Gh0st'; applyTheme(currentTheme); refreshAIChatStatus(); startPwnFaceCycle(); let initialTab=(location.hash||'#dash').slice(1); if(initialTab==='godseye') initialTab='vision'; if(['dash','deck','systems','signals','vision','externals','plugins','lab','settings'].includes(initialTab)) showTab(initialTab); refresh(); setInterval(refresh,15000); setInterval(pollTilt,3000); setInterval(refreshPwnFace,7000);
+document.title='Hack-Safe Spac3-Gh0st'; applyTheme(currentTheme); refreshAIChatStatus(); startPwnFaceCycle(); let initialTab=(location.hash||'#dash').slice(1); if(initialTab==='godseye'||initialTab==='vision') initialTab='externals'; if(['dash','deck','systems','signals','externals','plugins','lab','settings'].includes(initialTab)) showTab(initialTab); refresh(); setInterval(refresh,15000); setInterval(pollTilt,3000); setInterval(refreshPwnFace,7000);

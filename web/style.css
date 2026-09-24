@@ -396,10 +396,12 @@ button.is-busy { color:var(--yellow); border-color:var(--yellow); animation:puls
 button.is-error { color:var(--red); border-color:var(--red); }
 .mini-btn { min-height:22px; padding:2px 4px; font-size:9px; margin:1px; }
 .known-table td { vertical-align:middle; }
-.vision-history-row { display:grid; grid-template-columns:70px 1fr; gap:6px; border:1px solid #1e4b31; background:#06120b; padding:5px; align-items:center; }
+.vision-history-row { display:grid; grid-template-columns:70px 1fr auto; gap:6px; border:1px solid #1e4b31; background:#06120b; padding:5px; align-items:center; }
 .vision-history-row img { width:70px; height:42px; object-fit:cover; border:1px solid #1e4b31; }
 .vision-history-row b { color:var(--cyan); display:block; }
 .vision-history-row small { color:var(--dim); display:block; }
+.vision-history-del { background:transparent; border:1px solid #1e4b31; color:var(--dim); width:22px; height:22px; line-height:1; border-radius:3px; cursor:pointer; font-size:14px; padding:0; }
+.vision-history-del:hover { border-color:var(--red); color:var(--red); }
 @keyframes pulse { from { filter:brightness(.8); } to { filter:brightness(1.35); } }
 @media (max-width:1100px) { .dashboard-page { grid-template-columns:1fr 1fr; } .hero-ghost, .controls-card, .events { grid-column:1 / -1; } }
 @media (max-width:900px) {
@@ -450,7 +452,7 @@ button.is-error { color:var(--red); border-color:var(--red); }
   .rf-card .mini-table, .wifi-vault-card .mini-table, .service-table { min-width:360px; }
   .vision-layout { grid-template-columns:1fr; }
   .camera-frame-wrap { min-height:205px; }
-  .vision-history-row { grid-template-columns:58px 1fr; }
+  .vision-history-row { grid-template-columns:58px 1fr auto; }
   .vision-history-row img { width:58px; height:38px; }
   .ticker { font-size:10px; left:5px; right:5px; }
 }

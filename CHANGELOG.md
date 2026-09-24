@@ -1,5 +1,37 @@
 # Changelog
 
+## 2.6.0
+
+Bug-fix pass after a concurrent session's "restore header / collapse Signals / drop duplicate
+Cesium bundle" merge introduced a couple of regressions, plus a couple of pre-existing bugs
+surfaced by testing everything live on the physical Pi.
+
+### Fixed
+- **Signals tab was empty.** The new collapsible `<details class="signals-group">` wrapper
+  (from the concurrent merge) never got a `grid-column: 1 / -1` rule, so each group sat in a
+  single ~106px track of the outer 12-column grid instead of spanning full width -- squeezing
+  every card inside it down to near-zero width. Fixed in `web/v2.css`.
+- **God's Eye View: "cross origin" error.** Several routes the globe's own app actually calls
+  (`/api/openai/hud-summary`, `/api/realtime/*`, `/api/military-installations`,
+  `/api/weather-effects` -- confirmed against its `vite.config.js` middleware mounts) weren't in
+  `GODSEYE_API_PREFIXES`, so they fell through to Hack-Safe's own CSRF guard instead of being
+  proxied, which rejects them as "cross-origin request blocked". Added them to the allowlist.
+- **Camera feed went stale/black after Arm Vision.** `refreshCameraFrame`/`scheduleCamera` in
+  `web/app.js` still gated live polling on `activeTab === 'vision'` -- a tab that no longer exists
+  since Vision was merged into Externals. The check never matched, so the feed only ever fetched
+  one single frame (on arm/switch/scan) and then never updated again. Now gates on `'externals'`.
+- **CYD Buddy settings / theBAK3RY camera: not bugs.** Verified live -- CYD Buddy settings do
+  save and queue correctly (the console explicitly says "NO CYD DHCP LEASE YET", meaning the
+  physical Buddy isn't currently on the Wu-Tang LAN); theBAK3RY's host answers ping fine but
+  nothing is listening on its camera-snapshot port 8091, so its own snapshot server needs
+  checking on that Pi, not this one.
+
+### New
+- **Editable vision history.** Each Vision History row now has a delete button
+  (`delete_vision_history_entry` in `spac3ghost/vision.py`, `/api/vision/history/delete`) to
+  remove a single false-positive/irrelevant entry and its snapshot, instead of only being able to
+  wipe the entire history at once.
+
 ## 2.5.0
 
 Performance pass after the physical Pi 5 (Elecrow CrowPi, 7" touchscreen) was struggling badly.

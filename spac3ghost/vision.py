@@ -113,6 +113,26 @@ def clear_vision_history() -> Dict[str, Any]:
                 pass
     return {'ok': True, 'available': True, 'removed_rows': removed_rows, 'removed_snapshots': removed_files, 'items': [], 'count': 0}
 
+
+def delete_vision_history_entry(ts: int) -> Dict[str, Any]:
+    """Remove a single vision-history row (and its snapshot, if any) by timestamp."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    rows = _vision_history_rows()
+    if not isinstance(rows, list):
+        return {'ok': False, 'error': 'vision history is unavailable'}
+    kept = [r for r in rows if int(r.get('ts') or 0) != int(ts)]
+    if len(kept) == len(rows):
+        return {'ok': False, 'error': f'no vision history entry with ts={ts}'}
+    VISION_HISTORY_FILE.write_text(json.dumps(kept, indent=2, sort_keys=True))
+    snap = SNAP_DIR / f'{int(ts)}.jpg'
+    if snap.exists():
+        try:
+            snap.unlink()
+        except Exception:
+            pass
+    return {'ok': True, 'items': list(reversed(kept[-20:])), 'count': len(kept)}
+
+
 def _save_vision_history(entry: Dict[str, Any], jpeg: bytes | None = None) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     rows = _vision_history_rows()
