@@ -276,6 +276,27 @@ def _minimal_status(reason='warming'):
     return status
 
 
+LAB_TOYS_TTL = 90  # lab_toys fans out ~9 of its own subprocess probes; most refreshes reuse this
+_LAB_TOYS_CACHE = {}
+_LAB_TOYS_CACHE_AT = 0.0
+
+
+def _lab_toys_status_cached():
+    """lab_toys_status(), refreshed at most every LAB_TOYS_TTL seconds.
+
+    It isn't on the fast live-refresh path (the Lab tab is opened rarely compared to Dashboard/
+    Signals), so re-running its ~9 subprocess sub-probes on every ~20s status cycle just to serve
+    data nobody is looking at was needless CPU/process churn on a 4-core Pi.
+    """
+    global _LAB_TOYS_CACHE, _LAB_TOYS_CACHE_AT
+    if _LAB_TOYS_CACHE and time.time() - _LAB_TOYS_CACHE_AT < LAB_TOYS_TTL:
+        return _LAB_TOYS_CACHE
+    result = lab_toys_status()
+    _LAB_TOYS_CACHE = result
+    _LAB_TOYS_CACHE_AT = time.time()
+    return result
+
+
 def _collect_status_payload():
     collectors = {
         'base': full_status,
@@ -285,7 +306,7 @@ def _collect_status_payload():
         'vision_history': lambda: vision_history(8),
         'controls': services_status,
         'spicy_tools': spicy_tools_status,
-        'lab_toys': lab_toys_status,
+        'lab_toys': _lab_toys_status_cached,
         'externals': external_status,
         'tailscale_ip': tailscale_ip,
     }
@@ -295,7 +316,11 @@ def _collect_status_payload():
     # detection, etc.) and is not on the fast live-refresh path, so it gets more time than
     # the others before falling back to a warming placeholder for just that section.
     per_key_timeout = {'lab_toys': 20}
-    with ThreadPoolExecutor(max_workers=len(collectors)) as pool:
+    # Bounded to the machine's core count: this used to be one thread per collector (10+, several
+    # of which fork their own subprocesses), which meant every ~20s refresh briefly oversubscribed
+    # a 4-core Pi far past its actual parallelism.
+    max_workers = max(2, min(len(collectors), os.cpu_count() or 4))
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = {pool.submit(fn): key for key, fn in collectors.items()}
         for fut, key in ((f, futures[f]) for f in futures):
             try:

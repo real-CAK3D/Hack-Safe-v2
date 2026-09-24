@@ -30,6 +30,7 @@
   function bgFrame(ts) {
     bg.raf = 0; if (!bg.on) return;
     if (document.hidden) { bg.raf = requestAnimationFrame(bgFrame); return; }
+    if (ts - bg.last < 33) { bg.raf = requestAnimationFrame(bgFrame); return; }  // ~30fps: O(n^2) link pass every frame adds up
     const dt = bg.last ? Math.min((ts - bg.last) / 1000, .05) : .016; bg.last = ts;
     const c = bg.ctx, col = getComputedStyle(document.body).getPropertyValue('--green').trim() || '#27c93f', L = 130;
     c.clearRect(0, 0, bg.w, bg.h);

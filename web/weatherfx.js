@@ -418,6 +418,7 @@
     E.raf = 0;
     var cv = E.canvas; if (!cv || !cv.isConnected) { E.canvas = null; return; }
     if (document.hidden || cv.clientWidth === 0) { E.raf = requestAnimationFrame(frame); return; }
+    if (ts - E.last < 33) { E.raf = requestAnimationFrame(frame); return; }  // ~30fps: this layers ~10 draw passes per frame
     var dt = E.last ? Math.min((ts - E.last) / 1000, .06) : .016; E.last = ts; E.dt = dt; E.time += dt;
     if (!E.tgt || E.time - E.lastDerive > 3) { E.tgt = deriveTarget(); E.lastDerive = E.time; updateTag(); }
     var T = E.tgt, C = E.cur, k = clamp(dt * (REDUCED ? 5 : 1.4), 0, 1);

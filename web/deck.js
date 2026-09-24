@@ -504,11 +504,13 @@
   }
 
   /* ------------------------------------------------------------------ loop */
-  let raf = 0, last = 0, lastSlow = 0, lastStatusRef = null, lastPoll = 0;
+  let raf = 0, last = 0, lastSlow = 0, lastStatusRef = null, lastPoll = 0, lastFrame = 0;
   function refreshAll(force) { renderGauges(); renderDevices(); renderProcs(); renderRings(); renderEvents(); renderPosture(); if (force) { radar.key = ''; graph.key = ''; } }
   function frame(ts) {
     raf = 0;
     if (document.body.dataset.activeTab !== 'deck' || document.hidden) { raf = requestAnimationFrame(frame); return; }
+    if (ts - lastFrame < 33) { raf = requestAnimationFrame(frame); return; }  // ~30fps cap: this tab draws five canvases a frame
+    lastFrame = ts;
     const dt = last ? Math.min((ts - last) / 1000, .05) : .016; last = ts;
     const s = status();
     if (s !== lastStatusRef) { lastStatusRef = s; refreshAll(false); }

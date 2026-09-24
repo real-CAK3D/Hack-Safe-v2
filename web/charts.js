@@ -245,9 +245,15 @@
     c.textAlign = 'right'; c.fillText('W', cx - R - 3, cy + 3);
   }
 
-  let raf = 0, lastGps = 0, lastWx = 0;
+  // Capped to ~30fps: these are slow sweeps/gauges, not action games, and this is the single
+  // shared loop behind every chart/radar canvas on the page -- halving its rate roughly halves
+  // its CPU cost with no visible difference, which matters on a Pi rendering its own kiosk display.
+  const FRAME_INTERVAL_MS = 33;
+  let raf = 0, lastGps = 0, lastWx = 0, lastFrame = 0;
   function loop(ts) {
     raf = 0;
+    if (ts - lastFrame < FRAME_INTERVAL_MS) { raf = requestAnimationFrame(loop); return; }
+    lastFrame = ts;
     if (!document.hidden) {
       const reg = window.__waveRegistry;
       if (reg && reg.size) {

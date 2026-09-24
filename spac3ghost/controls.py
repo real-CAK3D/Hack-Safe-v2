@@ -2210,7 +2210,7 @@ def lab_toys_status() -> Dict[str, Any]:
             'notes': 'No external dependency; fish behavior is generated in the browser from live Spac3-Gh0st status.',
         },
     }
-    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+    with ThreadPoolExecutor(max_workers=max(2, min(len(jobs), os.cpu_count() or 4))) as pool:
         futures = {pool.submit(fn): key for key, fn in jobs.items()}
         for fut in futures:
             key = futures[fut]

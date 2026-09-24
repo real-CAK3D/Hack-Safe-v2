@@ -1,5 +1,54 @@
 # Changelog
 
+## 2.5.0
+
+Performance pass after the physical Pi 5 (Elecrow CrowPi, 7" touchscreen) was struggling badly.
+Diagnosed live over SSH rather than guessing: Hack-Safe's own process was only using ~2.8% CPU --
+the real damage was a mis-scoped feature and a system-wide `--disable-gpu-rasterization` flag on
+the kiosk browser forcing all canvas rendering onto the CPU (flagged below, not yet changed).
+
+### Fixed
+- **God's Eye View's live server never stopped.** `godseye-live.service` (a Vite dev server for
+  the embedded Cesium globe) was enabled at boot and had been running continuously for 32+ hours,
+  averaging ~68% of one CPU core the whole time, regardless of whether anyone had the globe open.
+  The pre-built static shell already existed on disk (`web/godseye-app`, checked in from an
+  earlier snapshot) but nothing served it. Opening `/godseye-live` now serves that shell directly
+  -- no process required, loads in ~1ms instead of depending on a hot dev server. Only the live
+  tracking APIs (opensky, ais-live, cctv, overpass, ...) still need `godseye-live.service`; those
+  routes now start it on first hit (`ensure_godseye_running` in `spac3ghost/controls.py`) and a
+  30s-interval watchdog (`godseye_idle_check`) stops it again after 5 minutes without a live-data
+  request. The service's boot-time auto-start was also disabled on the Pi directly.
+- **Status collectors could oversubscribe the Pi's 4 cores.** `_collect_status_payload()` spun up
+  one thread per collector (10+, several of which fork their own subprocesses) every ~20s
+  regardless of core count; `lab_toys_status()`'s own internal pool did the same with ~9 more.
+  Both are now bounded to `os.cpu_count()`.
+- **`lab_toys_status()` ran on every status cycle even though the Lab tab is rarely open.** It fans
+  out ~9 of its own subprocess probes (Tailscale-hosted software checks, hardware detection). Now
+  cached for 90s instead of re-running on the ~20s status cadence.
+- **EarnApp removed from the Pi** at the user's request -- it was running two always-on services
+  selling spare CPU/bandwidth to a third party for no benefit to this project.
+
+### Changed
+- Every continuous decorative canvas loop (Signals/Deck chart+radar engine, the Deck tab's five
+  widgets, the constellation background, the weather ambient animation) is now capped to ~30fps
+  instead of uncapped 60fps. No visible difference at these animation speeds; roughly halves their
+  CPU/GPU cost, which matters most on a Pi rendering its own kiosk display.
+- GPS tilt polling only runs while the Signals tab is actually open, and backed off from 1.5s to
+  3s; the local camera preview backed off from ~2.2fps to ~1.4fps polling.
+
+### Known, not yet acted on
+- The kiosk launcher (`start-hack-safe-v2.sh`) opens Chromium with
+  `--disable-gpu-rasterization`, which forces every canvas/CSS composite in the browser onto the
+  CPU instead of the Pi 5's GPU. This is very likely a significant chunk of the remaining
+  sluggishness, but the flag may have been added to work around a real GPU-driver crash on this
+  hardware, and it can't be safely toggled without watching the actual screen for a crash/black
+  screen. Worth revisiting with the user present at the device.
+- This Pi is also running a full personal server stack alongside the kiosk dashboard (9 Docker
+  containers, Ollama, Jellyfin, a VNC server, Syncthing, vsftpd) sharing the same 4 cores; none of
+  that is Hack-Safe's to change.
+- `vcgencmd get_throttled` reports under-voltage/throttling have occurred this boot -- a power
+  delivery issue (PSU/cabling/case), not something software can fix.
+
 ## 2.4.0
 
 Perfecting the Spac3-Gh0st face/voice and the Signals tab, per this session's request to make
