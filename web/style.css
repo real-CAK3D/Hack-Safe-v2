@@ -35,7 +35,7 @@ header { border:1px solid #26332e; background:#090d11dd; box-shadow:0 0 18px #00
 .ticker-track { display:inline-block; min-width:max-content; padding:5px 0; will-change:transform; animation:ticker-left 40s linear infinite; }
 .ticker-bottom { position:fixed; left:10px; right:10px; bottom:6px; z-index:999; margin:0; pointer-events:none; }
 @keyframes ticker-left { from { transform:translateX(0); } to { transform:translateX(-50%); } }
-.tabs { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin:0 0 8px; }
+.tabs { display:grid; grid-template-columns:repeat(8,1fr); gap:6px; margin:0 0 8px; }
 .tab-button.active { background:#102a1a; color:#e8fff0; border-color:var(--cyan); box-shadow:0 0 10px #5ac8fa60; }
 .tab-panel { display:none; }
 .tab-panel.active { display:grid; }
@@ -905,32 +905,22 @@ button.is-error { color:var(--red); border-color:var(--red); }
 @media (max-width:1180px){ .systems-page { grid-template-columns:repeat(2,minmax(0,1fr)); } .systems-page .system-monitor-card, .systems-page .global-map-card, .systems-page .defense-card, .systems-page .sensor-card { grid-column:1 / -1; } }
 @media (max-width:900px){ .systems-page, .externals-page.vision-layout { grid-template-columns:minmax(0,1fr) !important; } .systems-page > .card, .externals-page.vision-layout > .card { grid-column:1 / -1 !important; } }
 
-/* Final page split: Dashboard / Systems / Signals / Lab / Externals / Settings. */
-.tabs { grid-template-columns:repeat(6,minmax(0,1fr)); }
+/* Final page split: Dashboard / Systems / Signals / Environment / Lab / Externals / Settings. */
+.tabs { grid-template-columns:repeat(8,minmax(0,1fr)); }
 .systems-page { grid-template-columns:repeat(3,minmax(0,1fr)); align-items:start; }
 .systems-page .page-hero { grid-column:1 / -1; }
 .systems-page .system-monitor-card { grid-column:span 2; }
-.signals-page { grid-template-columns:repeat(3,minmax(0,1fr)); align-items:start; grid-auto-flow:dense; }
-.signals-page .page-hero { grid-column:1 / -1; }
-.signals-page .hacker-card { grid-column:1; grid-row:auto; }
-.signals-page .known-devices-card { grid-column:2; max-height:610px; overflow:auto; }
-.signals-page .household-signals-card { grid-column:3; max-height:610px; overflow:auto; }
-.signals-page .weather-sim-card { grid-column:1 / -1; }
-.signals-page .weather-sim { grid-template-columns:minmax(260px,1fr) minmax(320px,1.35fr); }
-.signals-page .wifi-card { grid-column:span 2; }
-.signals-page .wifi-vault-card { grid-column:span 1; }
-.signals-page .global-map-card, .signals-page .defense-card, .signals-page .sensor-card, .signals-page .rf-card { grid-column:span 2; }
 .lab-layout { grid-template-columns:1.2fr 1fr 1fr; align-items:start; }
 .lab-layout .lab-hero-card, .lab-layout .lab-guide-card, .lab-layout .lab-software-card { grid-column:1 / -1; }
 .settings-plugin-switchboard, .settings-plugins-card { grid-column:1 / -1; }
 @media (max-width:1180px){
-  .systems-page, .signals-page, .lab-layout { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .systems-page .system-monitor-card, .signals-page .weather-sim-card, .signals-page .global-map-card, .signals-page .defense-card, .signals-page .sensor-card, .signals-page .rf-card, .lab-layout .lab-hero-card, .lab-layout .lab-guide-card, .lab-layout .lab-software-card { grid-column:1 / -1; }
+  .systems-page, .lab-layout { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .systems-page .system-monitor-card, .lab-layout .lab-hero-card, .lab-layout .lab-guide-card, .lab-layout .lab-software-card { grid-column:1 / -1; }
 }
 @media (max-width:900px){
   .tabs { grid-template-columns:repeat(3,minmax(0,1fr)); }
-  .systems-page, .signals-page, .lab-layout, .externals-page.vision-layout { grid-template-columns:minmax(0,1fr) !important; }
-  .systems-page > .card, .signals-page > .card, .lab-layout > .card, .externals-page.vision-layout > .card { grid-column:1 / -1 !important; }
+  .systems-page, .lab-layout, .externals-page.vision-layout { grid-template-columns:minmax(0,1fr) !important; }
+  .systems-page > .card, .lab-layout > .card, .externals-page.vision-layout > .card { grid-column:1 / -1 !important; }
 }
 
 
@@ -1010,9 +1000,6 @@ button.is-error { color:var(--red); border-color:var(--red); }
 #tab-dash .mission-card .mission-grid { grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); }
 #tab-dash .mission-controls { grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); }
 
-#tab-systems.systems-page { grid-template-columns:minmax(0,1fr); }
-#tab-systems > .card { grid-column:1 / -1 !important; }
-#tab-systems > .stat-card { max-width:100%; }
 #tab-systems .system-monitor-card { min-height:0; overflow:visible; }
 #tab-systems .system-monitor-viz { gap:12px; }
 #tab-systems .monitor-hero { grid-template-columns:repeat(4,minmax(140px,1fr)); }
@@ -1025,13 +1012,6 @@ button.is-error { color:var(--red); border-color:var(--red); }
 #tab-systems #services { max-width:1100px; margin:8px auto 0; white-space:pre-wrap; }
 #tab-systems .local-controls { max-width:760px; margin:0 auto 8px; }
 
-#tab-signals.signals-page { grid-template-columns:repeat(12,minmax(0,1fr)); }
-#tab-signals .page-hero { grid-column:1 / -1; }
-#tab-signals .hacker-card, #tab-signals .known-devices-card, #tab-signals .household-signals-card { grid-column:span 4; min-height:260px; max-height:none; }
-#tab-signals .wifi-card, #tab-signals .wifi-vault-card, #tab-signals .meshtastic-card, #tab-signals .rf-card { grid-column:span 4; }
-#tab-signals .global-map-card { grid-column:1 / -1; min-height:470px; }
-#tab-signals .global-map-viz, #tab-signals .world-map { min-height:430px; }
-#tab-signals .defense-card, #tab-signals .sensor-card { grid-column:span 6; min-height:310px; }
 #tab-signals .known-devices-card { overflow:auto; }
 #tab-signals .identity-columns { grid-template-columns:1fr; }
 #tab-signals .house-services { gap:5px; }
@@ -1045,9 +1025,6 @@ button.is-error { color:var(--red); border-color:var(--red); }
 #tab-lab .lab-software p, #tab-lab .lab-readiness, #tab-lab .lab-software small { overflow-wrap:anywhere; }
 
 @media (max-width:1180px){
-  #tab-signals .hacker-card, #tab-signals .known-devices-card, #tab-signals .household-signals-card,
-  #tab-signals .wifi-card, #tab-signals .wifi-vault-card, #tab-signals .meshtastic-card, #tab-signals .rf-card,
-  #tab-signals .defense-card, #tab-signals .sensor-card { grid-column:1 / -1; }
   #tab-systems .monitor-hero { grid-template-columns:repeat(2,minmax(0,1fr)); }
   #tab-systems .monitor-grid { grid-template-columns:minmax(0,1fr); }
 }
@@ -1056,15 +1033,15 @@ button.is-error { color:var(--red); border-color:var(--red); }
   .shell { max-width:100vw; overflow-x:hidden; padding-bottom:58px; }
   .tabs { display:flex !important; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:thin; scroll-snap-type:x proximity; grid-template-columns:none !important; }
   .tabs .tab-button { flex:0 0 auto; min-width:104px; scroll-snap-align:start; }
-  #tab-dash.dashboard-page, #tab-systems.systems-page, #tab-signals.signals-page, #tab-lab.lab-layout, .externals-page.vision-layout, .settings-layout { grid-template-columns:minmax(0,1fr) !important; width:100%; }
+  #tab-dash.dashboard-page, #tab-systems.systems-page, #tab-signals.signals-page, #tab-environment.environment-page, #tab-lab.lab-layout, .externals-page.vision-layout, .settings-layout { grid-template-columns:minmax(0,1fr) !important; width:100%; }
   #tab-dash .hero-ghost, #tab-dash .mission-card, #tab-dash .ai-chat-card, #tab-dash .open-tools-card, #tab-dash .dashboard-events,
-  #tab-systems > .card, #tab-signals > .card, #tab-lab > .card { grid-column:1 / -1 !important; min-width:0; }
+  #tab-systems > .card, #tab-signals > .card, #tab-environment > .card, #tab-lab > .card { grid-column:1 / -1 !important; min-width:0; }
   #tab-dash .hero-ghost { min-height:210px; }
   #tab-dash #face { font-size:clamp(52px,18vw,84px); }
   #tab-systems .monitor-hero, #tab-systems .monitor-grid, #tab-signals .identity-columns, #tab-lab .launch-group-grid { grid-template-columns:minmax(0,1fr) !important; }
   #tab-systems .monitor-grid table { min-width:520px; }
-  #tab-signals .global-map-card { min-height:330px; }
-  #tab-signals .global-map-viz, #tab-signals .world-map { min-height:300px; }
+  #tab-environment .global-map-card { min-height:330px; }
+  #tab-environment .global-map-viz, #tab-environment .world-map { min-height:300px; }
   #tab-lab .subtab-row { display:flex; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:thin; }
   #tab-lab .subtab { flex:0 0 auto; min-width:128px; }
   .ticker-bottom { position:fixed; left:4px; right:4px; bottom:3px; max-width:calc(100vw - 8px); overflow:hidden; }
@@ -1095,10 +1072,9 @@ button.is-error { color:var(--red); border-color:var(--red); }
 #tab-dash .ai-chat-card, #tab-dash .open-tools-card, #tab-dash .dashboard-events { grid-column:1 / -1 !important; }
 #tab-dash #face { font-size:clamp(64px,8vw,104px); }
 
-#tab-systems.systems-page { grid-template-columns:1fr 1.35fr; }
-#tab-systems > .page-hero, #tab-systems > .stat-card:last-of-type { grid-column:1 / -1 !important; }
-#tab-systems > .stat-card:not(.system-monitor-card):not(:last-of-type) { grid-column:1 / span 1 !important; }
-#tab-systems .system-monitor-card { grid-column:2 / span 1 !important; }
+#tab-systems.systems-page { grid-template-columns:1fr 1fr; }
+#tab-systems .page-hero, #tab-systems .system-monitor-card { grid-column:1 / -1 !important; }
+#tab-systems .system-card, #tab-systems .services-card { grid-column:span 1 !important; min-height:220px; }
 #tab-systems .monitor-hero { grid-template-columns:repeat(2,minmax(0,1fr)); }
 #tab-systems .monitor-grid { grid-template-columns:minmax(0,1fr); }
 #tab-systems .monitor-grid section { overflow-x:auto; }
@@ -1184,27 +1160,34 @@ button.is-error { color:var(--red); border-color:var(--red); }
   #tab-dash #face { line-height:1.14; padding-bottom:.10em; }
 }
 
-/* 2026-09-07 Signals density pass: fill the blank space above the Proton/global map. */
-#tab-signals.signals-page { grid-template-columns:repeat(12,minmax(0,1fr)); grid-auto-flow:row dense; align-items:start; }
+/* Signals: flat 12-col layout, no more collapsible groups -- 8 cards in DOM order, each row's
+   spans sum to exactly 12 so plain sequential flow tiles cleanly (no explicit start columns,
+   no dense-packing reshuffle). Row 1: hacker+wifi+wifi-vault (4+5+3). Row 2: known-devices+
+   household+meshtastic (4+4+4). Row 3: rf+defense (6+6). */
+#tab-signals.signals-page { grid-template-columns:repeat(12,minmax(0,1fr)); align-items:start; }
 #tab-signals .page-hero { grid-column:1 / -1 !important; }
-#tab-signals .hacker-card { grid-column:1 / span 4 !important; max-height:640px; overflow:auto; }
-#tab-signals .known-devices-card { grid-column:5 / span 4 !important; max-height:640px; overflow:auto; }
-#tab-signals .household-signals-card { grid-column:9 / span 4 !important; max-height:640px; overflow:auto; }
-#tab-signals .weather-sim-card { grid-column:1 / -1 !important; }
-#tab-signals .wifi-card { grid-column:1 / span 5 !important; }
-#tab-signals .wifi-vault-card { grid-column:6 / span 3 !important; }
-#tab-signals .rf-card { grid-column:9 / span 4 !important; }
-#tab-signals .global-map-card { grid-column:1 / -1 !important; }
-#tab-signals .defense-card, #tab-signals .sensor-card { grid-column:span 6 !important; }
+#tab-signals .hacker-card { grid-column:span 4 !important; max-height:640px; overflow:auto; }
+#tab-signals .wifi-card { grid-column:span 5 !important; }
+#tab-signals .wifi-vault-card { grid-column:span 3 !important; }
+#tab-signals .known-devices-card, #tab-signals .household-signals-card, #tab-signals .meshtastic-card { grid-column:span 4 !important; max-height:640px; overflow:auto; }
+#tab-signals .rf-card, #tab-signals .defense-card { grid-column:span 6 !important; }
 @media (max-width:1180px){
   #tab-signals .hacker-card, #tab-signals .known-devices-card, #tab-signals .household-signals-card,
-  #tab-signals .weather-sim-card, #tab-signals .wifi-card, #tab-signals .wifi-vault-card,
-  #tab-signals .rf-card, #tab-signals .global-map-card, #tab-signals .defense-card, #tab-signals .sensor-card { grid-column:1 / -1 !important; max-height:none; }
+  #tab-signals .wifi-card, #tab-signals .wifi-vault-card, #tab-signals .meshtastic-card,
+  #tab-signals .rf-card, #tab-signals .defense-card { grid-column:1 / -1 !important; max-height:none; }
 }
 
-/* 2026-09-08 fit pass: keep Weather Ops and armed Safety evidence inside their cards. */
-#tab-signals .weather-sim-card { min-height:0; overflow:visible; }
-#tab-signals .weather-sim {
+/* Environment: Weather Ops full-width (its own internal grid wants the room), map + sensors below. */
+#tab-environment.environment-page { grid-template-columns:repeat(12,minmax(0,1fr)); align-items:start; }
+#tab-environment .page-hero { grid-column:1 / -1 !important; }
+#tab-environment .weather-sim-card { grid-column:1 / -1 !important; min-height:0; overflow:visible; }
+#tab-environment .sensor-card, #tab-environment .global-map-card { grid-column:span 6 !important; }
+#tab-environment .global-map-card { min-height:470px; }
+#tab-environment .global-map-viz, #tab-environment .world-map { min-height:430px; }
+@media (max-width:1180px){
+  #tab-environment .sensor-card, #tab-environment .global-map-card { grid-column:1 / -1 !important; }
+}
+#tab-environment .weather-sim {
   position:relative;
   left:auto;
   top:auto;
@@ -1217,10 +1200,10 @@ button.is-error { color:var(--red); border-color:var(--red); }
   grid-template-areas:"sky readout" "radar forecast" "waves waves";
   align-items:stretch;
 }
-#tab-signals .weather-readout, #tab-signals .weather-radar, #tab-signals .weather-sky,
-#tab-signals .forecast-strip, #tab-signals .weather-waves { min-width:0; }
-#tab-signals .weather-ops-table { table-layout:fixed; }
-#tab-signals .weather-ops-table td { white-space:normal; overflow-wrap:anywhere; word-break:break-word; }
+#tab-environment .weather-readout, #tab-environment .weather-radar, #tab-environment .weather-sky,
+#tab-environment .forecast-strip, #tab-environment .weather-waves { min-width:0; }
+#tab-environment .weather-ops-table { table-layout:fixed; }
+#tab-environment .weather-ops-table td { white-space:normal; overflow-wrap:anywhere; word-break:break-word; }
 #tab-lab #safetyBoundaryViz { display:block; }
 #tab-lab #safetyBoundaryViz > .spicy-banner { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); align-items:start; }
 #tab-lab #safetyBoundaryViz > .lab-tool-grid { grid-template-columns:repeat(auto-fit,minmax(118px,1fr)); margin:10px 0 12px; }
@@ -1232,7 +1215,7 @@ button.is-error { color:var(--red); border-color:var(--red); }
 #tab-lab .boundary-evidence li, #tab-lab .boundary-evidence summary { overflow-wrap:anywhere; word-break:break-word; }
 #tab-lab .boundary-evidence details { margin-top:6px; }
 @media (max-width:900px){
-  #tab-signals .weather-sim { grid-template-columns:minmax(0,1fr); grid-template-areas:"sky" "readout" "radar" "forecast" "waves"; }
+  #tab-environment .weather-sim { grid-template-columns:minmax(0,1fr); grid-template-areas:"sky" "readout" "radar" "forecast" "waves"; }
   #tab-lab .safety-boundary-wrap { grid-template-columns:minmax(0,1fr); }
   #tab-lab .safety-boundary-actions { grid-template-columns:minmax(0,1fr); }
   #tab-lab .safety-boundary-actions button { width:100%; }

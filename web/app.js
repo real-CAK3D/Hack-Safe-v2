@@ -409,7 +409,7 @@ function scheduleCamera(s){
   if(shouldRun){ refreshCameraFrame(true); cameraTimer=setInterval(()=>refreshCameraFrame(false), enabled ? (activeCameraFeed==='local'?700:900) : 1800); }
 }
 async function pollTilt(){
-  if(tiltPollBusy || activeTab!=='signals' || !document.getElementById('tiltStage')) return;
+  if(tiltPollBusy || activeTab!=='environment' || !document.getElementById('tiltStage')) return;
   tiltPollBusy=true;
   try{ const r=await fetch('/api/sensors/tilt',{cache:'no-store'}); if(r.ok) applyTilt(await r.json()); }catch(e){}
   tiltPollBusy=false;
@@ -1453,4 +1453,4 @@ async function loadSettings(){ const r=await fetch('/api/config',{cache:'no-stor
 async function saveSettings(){ try{ const config=readSettingsJson(); const d=await postJson('/api/config',{config}); document.getElementById('settingsStatus').textContent=d.ok?'Settings saved. Plugins reloaded.':`Save failed: ${d.error||'unknown'}`; if(d.ok) currentConfig=config; await refresh(); renderFaceMoodSettings(currentConfig, lastStatus?.faces||{}); }catch(err){ document.getElementById('settingsStatus').textContent=`Save failed: ${err}`; } }
 async function togglePlugin(name, enabled){ if(!currentConfig) await loadSettings(); currentConfig.plugins=currentConfig.plugins||{}; currentConfig.plugins[name]=!!enabled; document.getElementById('settingsJson').value=JSON.stringify(currentConfig,null,2); const d=await postJson('/api/config',{config:currentConfig}); document.getElementById('pluginSwitches').classList.toggle('saving', false); if(!d.ok) alert(`Plugin save failed: ${d.error||'unknown'}`); await refresh(); }
 
-document.title='Hack-Safe Spac3-Gh0st'; applyTheme(currentTheme); refreshAIChatStatus(); startPwnFaceCycle(); let initialTab=(location.hash||'#dash').slice(1); if(initialTab==='godseye'||initialTab==='vision') initialTab='externals'; if(['dash','deck','systems','signals','externals','plugins','lab','settings'].includes(initialTab)) showTab(initialTab); refresh(); setInterval(refresh,15000); setInterval(pollTilt,3000); setInterval(refreshPwnFace,7000);
+document.title='Hack-Safe Spac3-Gh0st'; applyTheme(currentTheme); refreshAIChatStatus(); startPwnFaceCycle(); let initialTab=(location.hash||'#dash').slice(1); if(initialTab==='godseye'||initialTab==='vision') initialTab='externals'; if(['dash','deck','systems','signals','environment','externals','plugins','lab','settings'].includes(initialTab)) showTab(initialTab); refresh(); setInterval(refresh,15000); setInterval(pollTilt,3000); setInterval(refreshPwnFace,7000);

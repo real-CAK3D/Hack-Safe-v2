@@ -1,5 +1,5 @@
 /* Deck tab (deck.js) */
-.tabs { grid-template-columns: repeat(7, 1fr) !important; }
+.tabs { grid-template-columns: repeat(8, 1fr) !important; }
 .deck-page { grid-template-columns: repeat(12, minmax(0, 1fr)) !important; gap: 12px; align-items: stretch !important; }
 .deck-page > * { grid-column: span 12; min-width: 0; }
 .deck-hero { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 12px; }

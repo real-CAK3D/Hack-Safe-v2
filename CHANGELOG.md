@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.7.0
+
+Page-layout restructure per request: drop the Signals collapsible groups, split out a new
+Environment page, and tighten up empty space across pages.
+
+### Changed
+- **New "Environment" tab.** Weather Ops, GPS + Sensors, and Global Map moved out of Signals into
+  their own page. Signals is now a flat, single page (no more `<details>` collapse/expand groups)
+  with Hacker Deck, Wi-Fi, Known Networks, Known Devices, Household Signals, Meshtastic Gateway,
+  RF Audit, and Defensive Ops -- laid out so each row's column spans sum to exactly 12, so cards
+  tile predictably instead of relying on dense-packing to guess placement.
+- **Systems tab decluttered.** It only ever had 3 real cards (System, System Monitor, Services) but
+  was stuck in a layout that left an entire empty column next to Services. System and Services now
+  sit side by side (both compact), System Monitor spans full width below it (its own internal
+  tables want the room).
+- Removed several dead/superseded CSS layers found along the way: an old 3-column `.signals-page`
+  block and a `.systems-page` block both fully overridden by newer ID-scoped rules, and an
+  un-`!important`-marked rule that a `deck.css` `.tabs { ... !important }` rule (left over from
+  before Deck was tab #7) was silently overriding -- that one was the actual cause of the nav bar
+  wrapping to two rows once the 8th tab (Environment) was added, now fixed to `repeat(8, ...)`.
+
 ## 2.6.0
 
 Bug-fix pass after a concurrent session's "restore header / collapse Signals / drop duplicate
