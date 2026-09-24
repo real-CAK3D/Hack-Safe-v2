@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlparse
 from .collectors import active_recon, bluetooth_status, calibrate_tilt_level, full_status, handshake_capture_status, known_devices_status, known_wifi_passwords, lan_status, meshtastic_status, monitor_mode_status, openweather_key_status, pwnagotchi_plugins, sensor_status, set_monitor_mode, start_owned_lab_capture, stop_owned_lab_capture, tilt_status, update_known_device, weather_tile_url, wifi_psk_action, wifi_status, wifi_target_action
 from . import __version__, hostinfo, metrics
 from .config import load_config, save_config
-from .controls import ai_chat_ask, ai_chat_status, camera_status, external_control, external_status, ir_action, launch_proton_gui, service_status, services_status, set_camera_feed, set_vision_enabled, spicy_tool_action, spicy_tools_status, lab_toys_status, companion_firmware_action, flipper_feature_action, lab_gate_action, nfc_rfid_action, safety_boundary_action, lab_software_action, tailscale_ip, tailscale_status, tailscale_up, tailscale_restart, tailscale_protect, toggle_service, toggle_vpn, vpn_status, select_vpn_profile, connect_vpn_profile
+from .controls import ai_chat_ask, ai_chat_status, camera_status, external_control, external_status, ir_action, launch_proton_gui, service_status, services_status, set_camera_feed, set_vision_enabled, spicy_tool_action, spicy_tools_status, lab_toys_status, companion_firmware_action, flipper_feature_action, lab_gate_action, nfc_rfid_action, safety_boundary_action, lab_software_action, tailscale_ip, tailscale_status, tailscale_up, tailscale_restart, tailscale_protect, toggle_service, toggle_vpn, vpn_status, select_vpn_profile, connect_vpn_profile, ensure_godseye_running, godseye_idle_check
 from .cyd import cyd_settings, cyd_status, record_heartbeat, telemetry_from_status, update_cyd_settings
 from .personality import Spac3Voice, choose_mood, event_from_status, merged_faces
 from .paths import ROOT, WEB_DIR
@@ -156,6 +156,26 @@ def proxy_godseye(handler, upstream_path: str, rewrite_html: bool = False):
         handler.wfile.write(body)
     except Exception as exc:
         json_response(handler, {'ok': False, 'error': f'Gods Eye proxy failed: {exc}'}, code=502)
+
+def serve_godseye_shell(handler):
+    """Serve the pre-built God's Eye View globe shell as static files.
+
+    The shell (Cesium engine, UI, 3D models) never needs the live Vite dev server -- only the
+    live tracking APIs (opensky, ais-live, cctv, ...) do, and those still proxy through to
+    godseye-live.service on demand. This means opening the globe is instant and costs nothing
+    when it's closed, instead of needing a full-CPU dev server running around the clock.
+    """
+    index_path = (WEB / 'godseye-app' / 'index.html').resolve()
+    if not str(index_path).startswith(str(WEB.resolve())) or not index_path.exists():
+        return json_response(handler, {'ok': False, 'error': "God's Eye View static shell missing (web/godseye-app/index.html)"}, code=404)
+    body = index_path.read_bytes()
+    handler.send_response(200)
+    handler.send_header('Content-Type', 'text/html; charset=utf-8')
+    handler.send_header('Content-Length', str(len(body)))
+    handler.send_header('Cache-Control', 'no-store')
+    handler.end_headers()
+    handler.wfile.write(body)
+
 
 def _hostname_of(value: str) -> str:
     value = (value or '').strip().lower()
@@ -381,10 +401,11 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         self._godseye_query = parsed.query
         if path == '/godseye-live' or path == '/godseye-live/':
-            return proxy_godseye(self, '/', rewrite_html=True)
+            return serve_godseye_shell(self)
         if path.startswith('/godseye-live/'):
             return proxy_godseye(self, path.removeprefix('/godseye-live'), rewrite_html=path.endswith('.html'))
         if path.startswith(GODSEYE_API_PREFIXES):
+            ensure_godseye_running()
             return proxy_godseye(self, path)
         if path.startswith(GODSEYE_DEV_PREFIXES):
             return proxy_godseye(self, path)
@@ -523,6 +544,7 @@ class Handler(BaseHTTPRequestHandler):
         if problem:
             return json_response(self, {'ok': False, 'error': problem}, code=403)
         if path.startswith(GODSEYE_API_PREFIXES):
+            ensure_godseye_running()
             return proxy_godseye(self, path)
         if path == '/api/config':
             try:
@@ -717,11 +739,23 @@ class Handler(BaseHTTPRequestHandler):
         sys.stderr.write('[%s] %s\n' % (time.strftime('%H:%M:%S'), format % args))
 
 
+def _godseye_watchdog_loop():
+    while True:
+        time.sleep(30)
+        try:
+            message = godseye_idle_check()
+            if message:
+                add_event('external', message)
+        except Exception:
+            pass
+
+
 def main():
     PLUGINS.load()
     metrics.start()
     add_event('boot', VOICE.starting())
     _trigger_status_refresh(force=True)
+    threading.Thread(target=_godseye_watchdog_loop, daemon=True).start()
     # SPAC3GHOST_HOST / SPAC3GHOST_PORT override; otherwise bind to the Tailscale IP if up, else loopback.
     host = os.environ.get('SPAC3GHOST_HOST') or tailscale_ip() or '127.0.0.1'
     port = int(os.environ.get('SPAC3GHOST_PORT') or 8765)

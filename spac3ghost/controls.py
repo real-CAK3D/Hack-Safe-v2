@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import json
 import os
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -1193,6 +1194,57 @@ def lab_software_status() -> Dict[str, Any]:
         'policy': 'Cards report live install/service/command state. Generic toggles stage/enable only; active scans, installs, services, or field-system changes require separate explicit approval and target scope.',
         'modules': modules,
     }
+
+
+GODSEYE_IDLE_STOP_S = 300  # stop the live Vite service after this long without a live-data hit
+_godseye_last_hit = 0.0
+
+
+def godseye_touch() -> None:
+    """Record that a live God's Eye View data request just happened."""
+    global _godseye_last_hit
+    _godseye_last_hit = time.time()
+
+
+def _godseye_port_open() -> bool:
+    try:
+        with socket.create_connection(('127.0.0.1', 4173), timeout=0.4):
+            return True
+    except OSError:
+        return False
+
+
+def ensure_godseye_running(wait_s: float = 8.0) -> bool:
+    """Start godseye-live.service on demand for a live-data request and wait briefly for it to
+    come up. The static globe shell (web/godseye-app) never needs this service -- only the live
+    tracking APIs (opensky, ais-live, cctv, ...) do, so this is only called for those routes.
+    """
+    godseye_touch()
+    if _godseye_port_open():
+        return True
+    _run(['systemctl', '--user', 'start', 'godseye-live.service'], timeout=15)
+    deadline = time.time() + wait_s
+    while time.time() < deadline:
+        if _godseye_port_open():
+            return True
+        time.sleep(0.3)
+    return False
+
+
+def godseye_idle_check() -> str | None:
+    """Call periodically from a background thread. Stops the live Vite service if nothing has
+    used it for GODSEYE_IDLE_STOP_S, so an open globe tab (or one left open and forgotten) doesn't
+    keep a CPU core busy indefinitely. Returns a message to log if it just stopped something.
+    """
+    global _godseye_last_hit
+    if _godseye_last_hit <= 0 or time.time() - _godseye_last_hit < GODSEYE_IDLE_STOP_S:
+        return None
+    _godseye_last_hit = 0.0
+    active = _cmd_output(['systemctl', '--user', 'is-active', 'godseye-live.service'], timeout=2) == 'active'
+    if not active:
+        return None
+    _run(['systemctl', '--user', 'stop', 'godseye-live.service'], timeout=30)
+    return "God's Eye View live server auto-stopped after 5 min idle (the globe itself still opens instantly)."
 
 
 def lab_software_action(module: str, action: str) -> Dict[str, Any]:
