@@ -56,17 +56,37 @@
 
       <section id="tab-signals" class="tab-panel page signals-page dashboard-page">
         <section class="card page-hero"><h2>Signals</h2><p class="mini">Wi-Fi, Bluetooth/LAN, GPS/sensors, RF audit, map, and defensive situational awareness — separate from core Systems and Lab tools.</p></section>
-        <section class="card stat-card hacker-card"><h2>Hacker Deck</h2><div class="local-controls"><button onclick="scan('lan')">LAN Scan</button><button onclick="scan('bluetooth')">BT Scan</button><button id="reconButton" onclick="aggressiveRecon()">Aggro Recon</button><button id="stealthButton" onclick="toggleStealth()">Stealth UI</button></div><div id="hackerViz" class="viz-stack"></div></section>
-        <section class="card stat-card weather-sim-card"><h2>Weather Ops</h2><div id="weatherSimViz" class="weather-sim">Loading weather operations...</div></section>
-        <section class="card stat-card known-devices-card"><h2>Known Devices</h2><div id="knownDevicesViz" class="viz-stack"></div></section>
-        <section class="card stat-card household-signals-card"><h2>Household Signals</h2><p class="mini">Correlates LAN, Wi‑Fi, Bluetooth, Pis, cameras, and Home Assistant labels so strangers stand out.</p><div id="householdSignalsViz" class="household-signals-viz">Mapping household signals...</div></section>
-        <section class="card stat-card wifi-card"><h2>Wi-Fi</h2><div class="local-controls"><button onclick="scan('wifi')">Wi-Fi Scan</button><button id="wifiVaultButton" onclick="loadWifiVault()">Wi-Fi Vault</button></div><div id="wifiViz" class="viz-stack"></div><pre id="wifi"></pre></section>
-        <section class="card stat-card wifi-vault-card"><h2>Known Networks</h2><div id="wifiVaultViz" class="viz-stack"><div class="scanline-note">Hit Wi-Fi Vault to load saved profiles. Passwords stay hidden until you flip the reveal switch.</div></div></section>
-        <section class="card stat-card meshtastic-card"><h2>Meshtastic Gateway</h2><p class="mini">Upstairs LoRa gateway staging. Read-only until the ThinkNode is plugged into Hack-Safe.</p><div id="meshtasticViz" class="mesh-viz">Waiting for mesh gateway...</div></section>
-        <section class="card stat-card rf-card"><h2>RF Audit</h2><div id="rfAuditViz" class="viz-stack"></div></section>
-        <section class="card stat-card defense-card"><h2>Defensive Ops</h2><div id="defenseOpsViz" class="viz-stack"></div></section>
-        <section class="card stat-card sensor-card"><h2>GPS + Sensors</h2><div class="local-controls"><button onclick="fetch('/api/sensors/refresh').then(refresh)">Refresh Sensors</button><button onclick="calibrateTiltLevel()">Set Current Tilt as Level</button></div><div id="sensorViz" class="viz-stack"></div><pre id="sensors"></pre></section>
-        <section class="card stat-card global-map-card"><h2>Global Map</h2><div id="globalMapViz" class="global-map-viz"></div></section>
+        <details class="signals-group" open>
+          <summary>Networks &amp; Devices</summary>
+          <div class="signals-group-body">
+            <section class="card stat-card hacker-card"><h2>Hacker Deck</h2><div class="local-controls"><button onclick="scan('lan')">LAN Scan</button><button onclick="scan('bluetooth')">BT Scan</button><button id="reconButton" onclick="aggressiveRecon()">Aggro Recon</button><button id="stealthButton" onclick="toggleStealth()">Stealth UI</button></div><div id="hackerViz" class="viz-stack"></div></section>
+            <section class="card stat-card wifi-card"><h2>Wi-Fi</h2><div class="local-controls"><button onclick="scan('wifi')">Wi-Fi Scan</button><button id="wifiVaultButton" onclick="loadWifiVault()">Wi-Fi Vault</button></div><div id="wifiViz" class="viz-stack"></div><pre id="wifi"></pre></section>
+            <section class="card stat-card wifi-vault-card"><h2>Known Networks</h2><div id="wifiVaultViz" class="viz-stack"><div class="scanline-note">Hit Wi-Fi Vault to load saved profiles. Passwords stay hidden until you flip the reveal switch.</div></div></section>
+            <section class="card stat-card known-devices-card"><h2>Known Devices</h2><div id="knownDevicesViz" class="viz-stack"></div></section>
+            <section class="card stat-card household-signals-card"><h2>Household Signals</h2><p class="mini">Correlates LAN, Wi‑Fi, Bluetooth, Pis, cameras, and Home Assistant labels so strangers stand out.</p><div id="householdSignalsViz" class="household-signals-viz">Mapping household signals...</div></section>
+          </div>
+        </details>
+        <details class="signals-group">
+          <summary>RF &amp; Mesh</summary>
+          <div class="signals-group-body">
+            <section class="card stat-card meshtastic-card"><h2>Meshtastic Gateway</h2><p class="mini">Upstairs LoRa gateway staging. Read-only until the ThinkNode is plugged into Hack-Safe.</p><div id="meshtasticViz" class="mesh-viz">Waiting for mesh gateway...</div></section>
+            <section class="card stat-card rf-card"><h2>RF Audit</h2><div id="rfAuditViz" class="viz-stack"></div></section>
+          </div>
+        </details>
+        <details class="signals-group">
+          <summary>Defensive Ops</summary>
+          <div class="signals-group-body">
+            <section class="card stat-card defense-card"><h2>Defensive Ops</h2><div id="defenseOpsViz" class="viz-stack"></div></section>
+          </div>
+        </details>
+        <details class="signals-group">
+          <summary>Environment &amp; Map</summary>
+          <div class="signals-group-body">
+            <section class="card stat-card weather-sim-card"><h2>Weather Ops</h2><div id="weatherSimViz" class="weather-sim">Loading weather operations...</div></section>
+            <section class="card stat-card sensor-card"><h2>GPS + Sensors</h2><div class="local-controls"><button onclick="fetch('/api/sensors/refresh').then(refresh)">Refresh Sensors</button><button onclick="calibrateTiltLevel()">Set Current Tilt as Level</button></div><div id="sensorViz" class="viz-stack"></div><pre id="sensors"></pre></section>
+            <section class="card stat-card global-map-card"><h2>Global Map</h2><div id="globalMapViz" class="global-map-viz"></div></section>
+          </div>
+        </details>
       </section>
 
       <section id="tab-lab" class="tab-panel page lab-layout">
@@ -132,6 +152,7 @@
       <section id="tab-externals" class="tab-panel page externals-page vision-layout">
         <section class="card page-hero"><h2>Externals</h2><p class="mini">Vision, camera feeds, and external Pi/car nodes live together here. God's Eye View launches from the Dashboard's Open Tools card.</p></section>
         <section class="card stat-card cyd-buddy-card"><h2>CYD Buddy Dock</h2><p class="mini">Desk-buddy dock over Wu-Tang LAN. Telemetry is event-driven; phrases stay on the Buddy.</p><div id="cydBuddyViz" class="cyd-buddy-viz">Waiting for CYD Buddy...</div></section>
+        <section class="card stat-card pwnagotchi-dock-card"><h2>Pwnagotchi Dock</h2><p class="mini">CAK3DAGOTCHI over Tailscale/USB. The face is proxied live from its own web UI; open the full UI in a new tab for everything else.</p><div id="pwnagotchiDockViz" class="pwnagotchi-dock-viz">Probing Pwnagotchi...</div></section>
         <section class="card vision-card">
           <h2>Camera Feed</h2>
           <div class="camera-frame-wrap">

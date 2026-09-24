@@ -529,6 +529,20 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         # Full dashboard URL on your tailnet, e.g. http://my-pi.tailXXXX.ts.net:8765
         # (also settable via SPAC3GHOST_TAILSCALE_URL). Empty = don't advertise one.
         'url': '',
+    },
+    'pwnagotchi': {
+        # Companion Pwnagotchi dock (Externals tab). The dock probes each host in
+        # order and uses whichever answers on `port`, so Tailscale, MagicDNS, and
+        # the USB-gadget IPs can all be listed. Override via env SPAC3GHOST_PWN_HOST
+        # (comma separated) / SPAC3GHOST_PWN_PORT.
+        'hosts': ['100.100.63.24', 'cak3dagotchi', 'cak3dagotchi.local', '10.0.0.2', '10.66.0.2'],
+        'port': 8080,
+        # Web-UI (basic auth) login. Secrets do not belong in source control: leave
+        # these empty here and set the real values in the git-ignored data/config.json
+        # or via env SPAC3GHOST_PWN_USER / SPAC3GHOST_PWN_PASS. Empty falls back to the
+        # stock Pwnagotchi default (changeme/changeme).
+        'username': '',
+        'password': '',
     }
 }
 

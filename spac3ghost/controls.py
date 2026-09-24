@@ -2119,6 +2119,15 @@ def hardware_docks_status() -> Dict[str, Any]:
     pwn_usb = [x for x in links if x.startswith(('usb', 'enx'))]
     from .cyd import cyd_status as _cyd_dock_status
     cyd_state = _cyd_dock_status(include_settings=False)
+    try:
+        from .pwnagotchi_dock import pwn_dock_status as _pwn_dock_status
+        pwn_state = _pwn_dock_status()
+    except Exception:
+        pwn_state = {}
+    pwn_online = bool(pwn_state.get('reachable'))
+    pwn_candidates = list(pwn_usb)
+    if pwn_state.get('host') and pwn_state.get('host') not in pwn_candidates:
+        pwn_candidates.append(pwn_state.get('host'))
     docks = [
         {
             'id': 'cyd-buddy', 'label': 'CYD Buddy Dock', 'kind': 'ESP32-2432S028R desk buddy over Wi-Fi (Wu-Tang LAN hotspot)',
@@ -2127,9 +2136,10 @@ def hardware_docks_status() -> Dict[str, Any]:
             'actions': ['heartbeat status', 'settings console'], 'blocked_actions': ['flash without explicit firmware approval'],
         },
         {
-            'id': 'pwnagotchi-zero2', 'label': 'Pwnagotchi Pi Zero 2 WH Dock', 'kind': 'USB gadget/Ethernet/serial dock',
-            'detected': bool(pwn_usb), 'candidates': pwn_usb, 'home': 'Lab → Pwnagotchi / Hashcat Workflows',
-            'readiness': 'USB gadget network visible' if pwn_usb else 'plug Pwnagotchi over USB data; expect usb0/enx interface or serial console',
+            'id': 'pwnagotchi-zero2', 'label': 'Pwnagotchi Pi Zero 2 WH Dock', 'kind': 'USB gadget/Ethernet/serial dock + Externals web dock',
+            'detected': bool(pwn_usb) or pwn_online, 'candidates': pwn_candidates, 'home': 'Externals -> Pwnagotchi Dock',
+            'readiness': (f"web dock {pwn_state.get('dock_label') or 'ONLINE'} via {pwn_state.get('host')}" if pwn_online
+                          else ('USB gadget network visible' if pwn_usb else 'plug Pwnagotchi over USB data or bring it onto the tailnet; expect usb0/enx interface, web UI on :8080, or serial console')),
             'actions': ['detect', 'open workflow'], 'blocked_actions': ['auto-SSH with unknown creds', 'start deauth/capture'],
         },
         {

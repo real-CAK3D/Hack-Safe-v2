@@ -19,6 +19,7 @@ from . import __version__, hostinfo, metrics
 from .config import load_config, save_config
 from .controls import ai_chat_ask, ai_chat_status, camera_status, external_control, external_status, ir_action, launch_proton_gui, service_status, services_status, set_camera_feed, set_vision_enabled, spicy_tool_action, spicy_tools_status, lab_toys_status, companion_firmware_action, flipper_feature_action, lab_gate_action, nfc_rfid_action, safety_boundary_action, lab_software_action, tailscale_ip, tailscale_status, tailscale_up, tailscale_restart, tailscale_protect, toggle_service, toggle_vpn, vpn_status, select_vpn_profile, connect_vpn_profile, ensure_godseye_running, godseye_idle_check
 from .cyd import cyd_settings, cyd_status, record_heartbeat, telemetry_from_status, update_cyd_settings
+from .pwnagotchi_dock import fetch_ui_png, pwn_dock_status
 from .personality import Spac3Voice, choose_mood, event_from_status, merged_faces
 from .paths import ROOT, WEB_DIR
 from .plugins import PluginManager
@@ -262,6 +263,7 @@ def _minimal_status(reason='warming'):
         'lab_toys': {},
         'externals': {},
         'cyd_buddy': cyd_status(),
+        'pwnagotchi_dock': pwn_dock_status(),
         'tailscale_url': '',
         'native_plugins': PLUGINS.describe(),
         'plugin_panels': list(LAST_PLUGIN_PANELS),
@@ -304,6 +306,7 @@ def _collect_status_payload():
     for key in ('vpn', 'tailscale', 'vision', 'vision_history', 'controls', 'spicy_tools', 'lab_toys', 'externals'):
         status[key] = results.get(key)
     status['cyd_buddy'] = cyd_status()
+    status['pwnagotchi_dock'] = pwn_dock_status()
     ts_url = os.environ.get('SPAC3GHOST_TAILSCALE_URL') or load_config().get('tailscale', {}).get('url') or ''
     status['tailscale_url'] = ts_url if results.get('tailscale_ip') else ''
     status['collector_latency_ms'] = int((time.time() - started) * 1000)
@@ -421,6 +424,13 @@ class Handler(BaseHTTPRequestHandler):
             return json_response(self, cyd_settings())
         if path == '/api/cyd/telemetry':
             return json_response(self, telemetry_from_status(status_snapshot(wait=False)))
+        if path == '/api/pwnagotchi/dock':
+            return json_response(self, pwn_dock_status())
+        if path == '/api/pwnagotchi/ui':
+            body, ctype, code = fetch_ui_png()
+            if body is None:
+                return json_response(self, {'ok': False, 'error': ctype}, code=code if code >= 400 else 502)
+            return binary_response(self, body, ctype or 'image/png')
         if path == '/api/mesh/status':
             return json_response(self, {'meshtastic': meshtastic_status(force=parsed.query in ('force=1', 'refresh=1'))})
         if path == '/api/weather/keycheck':
