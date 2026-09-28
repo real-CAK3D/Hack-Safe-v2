@@ -790,7 +790,7 @@ LAB_SOFTWARE_DEFS = {
         'commands': ['node', 'npm'],
         'unit': 'godseye-live.service',
         'unit_scope': 'user',
-        'url': 'http://127.0.0.1:8766/godseye-live/',
+        'url': '/godseye-live/',
         'summary': 'Live OSINT globe proxied through Spac3-Gh0st. Heavy Vite dev server is the current CPU hotspot.',
         'needed': ['static fallback exists', 'live Vite service only when needed'],
         'blocked_actions': ['leaving dev server hot when not using the globe', 'unbounded API polling'],
@@ -899,7 +899,7 @@ LAB_SOFTWARE_DEFS = {
         'commands': ['git', 'python3'],
         'unit': '',
         'unit_scope': 'user',
-        'url': 'http://127.0.0.1:8766/ruview/index.html',
+        'url': '/ruview/index.html',
         'summary': 'RuView WiFi CSI / presence sensing reference and static UI, staged locally for ESP32-S3/CSI hardware experiments.',
         'needed': ['ESP32-S3/C6 CSI node hardware', 'RuView repo under /home/pi/apps/RuView', 'static UI mirrored under Spac3-Gh0st web/ruview', 'Home Assistant/MQTT integration later'],
         'blocked_actions': ['privacy-invasive sensing without consent', 'claims of real room/vital sensing before hardware CSI validation', 'flashing firmware without explicit approval'],
@@ -1335,7 +1335,7 @@ def lab_software_action(module: str, action: str) -> Dict[str, Any]:
         elif module == 'godseye' and status_before.get('installed'):
             cp = _run(['systemctl', '--user', 'start', 'godseye-live.service'], timeout=120)
             if cp.returncode == 0:
-                state['last_message'] = "God's Eye View live server started. Open http://127.0.0.1:8766/godseye-live/; stop it from the dashboard when done to keep the Pi cool."
+                state['last_message'] = "God's Eye View live server started. Open /godseye-live/ from the dashboard's own host; stop it from the dashboard when done to keep the Pi cool."
             else:
                 state['last_message'] = f"God's Eye View start failed: {(cp.stderr or cp.stdout).strip()[:240]}"
         elif module == 'hermesworkspace' and status_before.get('installed'):

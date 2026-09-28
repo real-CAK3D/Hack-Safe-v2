@@ -628,6 +628,16 @@ function renderBak3ryDashboards(s={}){
   el.innerHTML=items.map(m=>`<a class="bak3ry-tile ${m.running?'online':'offline'}" href="${escapeHtml(m.url||'#')}" target="_blank" rel="noopener noreferrer"><b>${escapeHtml(m.label||m.id)}</b><span>${escapeHtml(m.home||'dashboard')}</span><small>${m.running?'online/open':'check'}</small></a>`).join('');
 }
 
+function fixLoopbackUrl(url){
+  // Safety net for the exact bug class that kept biting this project: a tool URL hardcoded as
+  // http://127.0.0.1:PORT/... only ever means anything on whatever device is running the
+  // browser, so it silently breaks for every client except one sitting on the Pi itself (a
+  // phone on the tailnet, for example). Swap the loopback host for whatever host the current
+  // page was actually loaded from, so a link that works on Hack-Safe's own screen works
+  // identically from any other device too.
+  if(!url) return url;
+  return url.replace(/^(https?:\/\/)(127\.0\.0\.1|localhost)(:|\/|$)/i, (m,p1,p2,p3)=>`${p1}${location.hostname}${p3}`);
+}
 function renderOpenTools(s={}){
   const el=document.getElementById('openToolsViz'); if(!el) return;
   const mods=(((s.lab_toys||{}).software||{}).modules||[]);
@@ -638,7 +648,7 @@ function renderOpenTools(s={}){
     osirisosint:{label:'OSIRIS AI Live',url:'https://www.osirisai.live/?layers=maritime,cctv,cctv_previews,live_news,earthquakes,global_incidents,day_night,cables,sdk_sea,sdk_air,sdk_naval',running:true,home:'Vision + OSINT Globe'},
     leolabsleo:{label:'LeoLabs LEO Visualization',url:'https://platform.leolabs.space/visualizations/leo',running:true,home:'Space / LEO Tracking'},
     ruview:{label:'RuView WiFi Sensing',url:'/ruview/index.html',running:true,home:'Local mirror'},
-    godseye:{label:"God's Eye View",url:'http://127.0.0.1:8766/godseye-live/',running:false,home:'Vision + OSINT Globe'},
+    godseye:{label:"God's Eye View",url:'/godseye-live/',running:false,home:'Vision + OSINT Globe'},
     hermesworkspace:{label:'Hermes Workspace',url:'http://100.75.120.80:3000',running:true,home:'Hermes'},
     projectnomad:{label:'Project N.O.M.A.D',url:'http://100.75.120.80:8080',running:true,home:'Field Kit'},
     uptimekuma:{label:'Uptime Kuma',url:'http://100.75.120.80:3001',running:true,home:'Monitoring'},
@@ -651,7 +661,7 @@ function renderOpenTools(s={}){
   };
   // Keep global/space situational-awareness links on the first-screen launcher too.
   const order=['osirisosint','leolabsleo','ruview','godseye','hermesworkspace','projectnomad','openwebui','portainer','uptimekuma','docker','ollama','jellyfin','syncthing'];
-  const card=id=>{ const m=byId[id]||fallback[id]||{}; const url=m.url||''; const state=m.running?'running':(m.installed?'installed/stopped':'not installed'); const onDemand=['godseye','hermesworkspace','projectnomad','openwebui','portainer']; const action=url?`<div class="open-tool-actions">${m.running?`<a class="button-link open-now" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open</a>${onDemand.includes(id)?`<button onclick="labSoftwareAction('${id}','disable')">Stop</button>`:''}`:(m.installed&&onDemand.includes(id)?`<button onclick="labSoftwareAction('${id}','open')">Start / Open</button>`:'')}</div>`:`<button onclick="showTab('lab'); setTimeout(()=>document.querySelector('.lab-software-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)">Docker Status</button>`; return `<div class="open-tool ${m.running?'running':''} ${url?'openable':'status-only'}"><b>${escapeHtml(m.label||id)}</b><span>${escapeHtml(m.home||'Local tool')} // ${escapeHtml(state)}</span>${action}<small>${url?escapeHtml(url):'Docker is managed from Lab → Launch Bay; Portainer gives the Docker UI.'}</small></div>`; };
+  const card=id=>{ const m=byId[id]||fallback[id]||{}; const url=fixLoopbackUrl(m.url||''); const state=m.running?'running':(m.installed?'installed/stopped':'not installed'); const onDemand=['godseye','hermesworkspace','projectnomad','openwebui','portainer']; const action=url?`<div class="open-tool-actions">${m.running?`<a class="button-link open-now" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open</a>${onDemand.includes(id)?`<button onclick="labSoftwareAction('${id}','disable')">Stop</button>`:''}`:(m.installed&&onDemand.includes(id)?`<button onclick="labSoftwareAction('${id}','open')">Start / Open</button>`:'')}</div>`:`<button onclick="showTab('lab'); setTimeout(()=>document.querySelector('.lab-software-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)">Docker Status</button>`; return `<div class="open-tool ${m.running?'running':''} ${url?'openable':'status-only'}"><b>${escapeHtml(m.label||id)}</b><span>${escapeHtml(m.home||'Local tool')} // ${escapeHtml(state)}</span>${action}<small>${url?escapeHtml(url):'Docker is managed from Lab → Launch Bay; Portainer gives the Docker UI.'}</small></div>`; };
   el.innerHTML=order.map(card).join('');
 }
 

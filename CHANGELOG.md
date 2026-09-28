@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.10.0
+
+Fixed "works on Hack-Safe itself but not on my phone" -- root-caused live via screen-share from a
+phone on the tailnet, not guessed at. Two distinct bugs, both now fixed:
+
+### Fixed
+- **The 8765 compat proxy broke every state-changing request that went through it.** It rewrote
+  the `Host` header to the upstream's `127.0.0.1:8766` while leaving `Origin` as whatever the
+  client actually sent (e.g. a phone's `http://100.75.120.80:8765`). The backend's CSRF guard
+  compares those two and blocks a mismatch as "cross-origin request blocked" -- so anything
+  POSTed through the old `:8765` URL (toggling a lab tool, arming vision, saving settings, etc.)
+  failed for every device except one hitting `:8766` directly. Fixed in
+  `hack-safe-v2-compat-proxy.py` on the Pi to preserve the original Host instead.
+- **God's Eye View and RuView's "Open" links were hardcoded to `http://127.0.0.1:8766/...`.**
+  127.0.0.1 only ever means "this device," so the link silently pointed at nothing for any
+  device but the Pi itself -- the exact class of bug the user said had bitten this project
+  "several times." Changed both to relative paths, and added `fixLoopbackUrl()` in `web/app.js`
+  as a standing safety net: any future tool URL that's accidentally left as `127.0.0.1`/
+  `localhost` gets rewritten to whatever host the page actually loaded from before it's ever
+  shown as a link, instead of silently breaking off-Pi again.
+- Note: Ollama's API intentionally only listens on loopback (`127.0.0.1:11434`) for safety, so
+  its Open Tools link will still fail to connect from another device even with the host rewrite
+  applied -- that's a real, deliberate constraint (exposing it tailnet-wide is a security-relevant
+  change, not a URL bug), not something silently patched here.
+
 ## 2.9.0
 
 Meshtastic Gateway now supports multiple gateways at once, each over its own transport -- so an
