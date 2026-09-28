@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.8.0
+
+Wired up a real spot for the new LoRa/mesh hardware: the Elecrow Meshtastic M2 and a DIY
+ESP32-S3 + Wio-SX1262 build.
+
+### Fixed
+- **`meshtastic` had no `config.py` schema entry at all** -- the same class of gap the OpenWeather
+  key had earlier: it worked by accident off in-code fallbacks, with no way to reliably persist
+  custom settings through the Settings JSON editor. Added a real `meshtastic` section to
+  `DEFAULT_CONFIG`.
+- **The meshtastic CLI subprocess calls used the literal string `"meshtastic"`** instead of the
+  resolved binary path, so if it were ever found via a venv fallback instead of PATH, the actual
+  `--info`/`--nodes` calls would still fail. Now uses the resolved path throughout.
+
+### Changed
+- Broadened every "ThinkNode"-specific label (Meshtastic Gateway card, its waiting/empty-state
+  text, config default) to name both real options: the Elecrow M2 and a DIY ESP32-S3 + Wio-SX1262
+  build. Either one shows up identically as a serial candidate once plugged in -- the backend was
+  already generic, it just talked about only one of the two devices.
+- Hardware Docks' generic "ESP32-S3 Sense / Dev Board Dock" renamed to "ESP32-S3 / Wio-SX1262 Dev
+  Dock" and now points at Signals -> Meshtastic Gateway as where it goes live once flashed.
+- Installed the `meshtastic` CLI on the Pi in its own venv (`~/.venvs/meshtastic`, PEP 668 blocks
+  a system-wide pip install on this OS) and symlinked it onto PATH, so the Meshtastic Gateway card
+  can go straight from "serial candidate found" to live node data the moment either radio is
+  plugged in -- no manual setup step left once the hardware arrives.
+
 ## 2.7.0
 
 Page-layout restructure per request: drop the Signals collapsible groups, split out a new

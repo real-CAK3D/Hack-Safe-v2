@@ -66,6 +66,19 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         # without a key. Only the radar tile overlay needs this.
         'openweathermap_api_key': '',
     },
+    'meshtastic': {
+        'enabled': True,
+        'protocol': 'meshtastic',
+        'role': 'upstairs gateway / router node',
+        'region': 'US915',
+        # Either the pre-built Elecrow M2 or a DIY ESP32-S3 + Wio-SX1262 build will show up as
+        # a serial candidate the same way; this is just what to expect on the label.
+        'expected_device': 'Elecrow Meshtastic M2 (ThinkNode) or DIY ESP32-S3 + Wio-SX1262',
+        'mqtt_enabled': False,
+        'mqtt_server': '',
+        'serial_port': '',
+        'channel': 'LongFast',
+    },
     'sensors': {
         'tilt_level_raw': 1,
     },

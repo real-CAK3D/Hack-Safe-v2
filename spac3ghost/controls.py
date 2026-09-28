@@ -2149,9 +2149,9 @@ def hardware_docks_status() -> Dict[str, Any]:
             'actions': ['detect', 'serial probe'], 'blocked_actions': ['flash without explicit firmware approval', 'RF actions outside owned lab'],
         },
         {
-            'id': 'esp32-s3', 'label': 'ESP32-S3 Sense / Dev Board Dock', 'kind': 'native USB/CP210x/CH340 serial dock',
+            'id': 'esp32-s3', 'label': 'ESP32-S3 / Wio-SX1262 Dev Dock', 'kind': 'native USB/CP210x/CH340 serial dock (also the DIY Meshtastic build: ESP32-S3 + Wio-SX1262)',
             'detected': bool(esp_matches or serials), 'candidates': esp_matches, 'serials': serials,
-            'home': 'Lab → Companion Firmware', 'readiness': 'serial candidate visible; esptool installed' if serials and esptool else 'needs serial device plus esptool',
+            'home': 'Lab → Companion Firmware / Signals → Meshtastic Gateway once flashed', 'readiness': 'serial candidate visible; esptool installed' if serials and esptool else 'needs serial device plus esptool',
             'actions': ['detect', 'esptool chip-id'], 'blocked_actions': ['erase/flash without explicit approval'],
         },
         {

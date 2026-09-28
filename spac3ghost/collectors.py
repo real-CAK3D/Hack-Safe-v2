@@ -1908,7 +1908,7 @@ def _mesh_gateway_config() -> Dict[str, Any]:
         'protocol': str(mesh.get('protocol') or 'meshtastic'),
         'role': str(mesh.get('role') or 'upstairs gateway / router node'),
         'region': str(mesh.get('region') or 'US915'),
-        'expected_device': str(mesh.get('expected_device') or 'Elecrow ThinkNode M2 ESP32-S3 SX1262 OLED'),
+        'expected_device': str(mesh.get('expected_device') or 'Elecrow Meshtastic M2 (ThinkNode) or DIY ESP32-S3 + Wio-SX1262'),
         'mqtt_enabled': bool(mesh.get('mqtt_enabled', False)),
         'mqtt_server': str(mesh.get('mqtt_server') or ''),
         'serial_port': str(mesh.get('serial_port') or ''),
@@ -1952,7 +1952,10 @@ def meshtastic_status(force: bool = False) -> Dict[str, Any]:
     def collect():
         cfg = _mesh_gateway_config()
         serials = _mesh_serial_candidates()
-        cli = shutil.which('meshtastic')
+        # Installed in its own venv (PEP 668 blocks a system-wide pip install on modern Pi OS),
+        # same pattern as the esptool venv in hardware_docks_status().
+        venv_cli = HOME / '.venvs/meshtastic/bin/meshtastic'
+        cli = shutil.which('meshtastic') or (str(venv_cli) if venv_cli.exists() else '')
         preferred = cfg.get('serial_port') or (serials[0].get('path') if serials else '')
         status: Dict[str, Any] = {
             'enabled': cfg.get('enabled', True),
@@ -1983,7 +1986,7 @@ def meshtastic_status(force: bool = False) -> Dict[str, Any]:
                 'strong mesh activity -> alert/watchful',
             ],
             'notes': [
-                'Plug the ThinkNode into Hack-Safe USB when it arrives.',
+                'Plug the Elecrow M2 or the ESP32-S3 + Wio-SX1262 build into Hack-Safe USB when ready.',
                 'Keep region on US915 for the 915 MHz hardware.',
                 'No transmit/config actions run from this readiness card.',
             ],
@@ -1992,16 +1995,16 @@ def meshtastic_status(force: bool = False) -> Dict[str, Any]:
             status.update({'available': False, 'state': 'disabled', 'summary': 'Meshtastic gateway disabled in config.'})
             return status
         if not serials:
-            status.update({'available': False, 'state': 'waiting_hardware', 'summary': 'Waiting for the upstairs ThinkNode gateway to be plugged into Hack-Safe.'})
+            status.update({'available': False, 'state': 'waiting_hardware', 'summary': 'Waiting for a LoRa gateway (Elecrow M2 or ESP32-S3 + Wio-SX1262) to be plugged into Hack-Safe.'})
             return status
         if not cli:
             status.update({'available': False, 'state': 'serial_seen_cli_missing', 'summary': f"Serial radio candidate found at {preferred}; install Meshtastic CLI to read node telemetry."})
             return status
-        args = ['meshtastic', '--info']
+        args = [cli, '--info']
         if preferred:
-            args = ['meshtastic', '--port', preferred, '--info']
+            args = [cli, '--port', preferred, '--info']
         info = run(args, timeout=8).strip()
-        nodes_text = run((['meshtastic', '--port', preferred, '--nodes'] if preferred else ['meshtastic', '--nodes']), timeout=10).strip()
+        nodes_text = run(([cli, '--port', preferred, '--nodes'] if preferred else [cli, '--nodes']), timeout=10).strip()
         nodes = _parse_meshtastic_nodes(nodes_text)
         status.update({
             'available': bool(info and not info.startswith('ERROR:')),
