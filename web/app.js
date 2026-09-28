@@ -574,17 +574,20 @@ async function cydBuddySaveSettings(){
 
 function renderMeshtastic(mesh={}){
   const el=document.getElementById('meshtasticViz'); if(!el) return;
-  const state=String(mesh.state||'waiting_hardware');
-  const online=state==='online';
-  const waiting=state==='waiting_hardware';
+  const gateways=mesh.gateways||[];
   const serials=mesh.serial_candidates||[];
-  const nodes=mesh.nodes||[];
-  const serialHtml=serials.slice(0,5).map(s=>`<div class="mesh-row"><b>${escapeHtml(s.path||'serial')}</b><span>${escapeHtml(s.resolved||'')}</span></div>`).join('') || '<div class="scanline-note">No LoRa serial device seen yet. Plug the Elecrow M2 or the ESP32-S3 + Wio-SX1262 build into Hack-Safe USB when ready.</div>';
-  const nodeHtml=nodes.slice(0,8).map(n=>`<div class="mesh-node"><b>${escapeHtml(n.user||n.id||'node')}</b><span>${escapeHtml([n.id,n.last_heard,n.snr,n.via].filter(Boolean).join(' // '))}</span></div>`).join('') || `<div class="scanline-note">${online?'No neighbor nodes reported yet.':'Node list will appear after the gateway and CLI are readable.'}</div>`;
+  const transportLabel={wifi:'WiFi',bluetooth:'Bluetooth',serial:'USB'};
+  const gatewayHtml=gateways.map(g=>{
+    const state=String(g.state||'not_configured');
+    const cls=state==='online'?'online':(state==='not_configured'?'waiting':'warn');
+    const heard=g.heard_nodes||[];
+    const nodeHtml=heard.slice(0,6).map(n=>`<div class="mesh-node"><b>${escapeHtml(n.user||n.id||'node')}</b><span>${escapeHtml([n.id,n.last_heard,n.snr,n.via].filter(Boolean).join(' // '))}</span></div>`).join('') || `<div class="scanline-note">${state==='online'?'No neighbor nodes reported yet.':'Node list appears once this gateway answers.'}</div>`;
+    return `<div class="mesh-gateway-card ${cls}"><div class="mesh-gateway-head"><b>${escapeHtml(g.label||g.id||'Gateway')}</b> <span class="mesh-transport">${escapeHtml(transportLabel[g.transport]||g.transport||'')}</span><span>${escapeHtml(g.summary||'')}</span><small>${escapeHtml(g.role||'')} // target: ${escapeHtml(g.target||'not set')}</small></div><div class="cyd-grid">${metricCell('State', state.replaceAll('_',' '), g.transport||'')}${metricCell('Nodes heard', g.node_count??heard.length??0, g.target||'no target set')}</div><div class="mesh-panels"><section><h3>Nodes Heard</h3>${nodeHtml}</section>${g.info_excerpt?`<section><h3>Info</h3><pre class="mesh-info">${escapeHtml(g.info_excerpt)}</pre></section>`:''}</div></div>`;
+  }).join('') || '<div class="scanline-note">No gateways configured. Add one under Settings -> meshtastic.gateways.</div>';
+  const serialNote=serials.length?`<div class="scanline-note">${serials.length} raw serial candidate(s) on Hack-Safe USB: ${escapeHtml(serials.slice(0,3).map(s=>s.path||'serial').join(', '))}</div>`:'';
   const hooks=(mesh.cydbuddy_hooks||[]).map(h=>`<li>${escapeHtml(h)}</li>`).join('') || '<li>CYD reaction hooks pending.</li>';
   const notes=(mesh.notes||[]).map(n=>`<li>${escapeHtml(n)}</li>`).join('') || '';
-  const statusClass=online?'online':(waiting?'waiting':'warn');
-  el.innerHTML=`<div class="mesh-dock ${statusClass}"><div><b>${escapeHtml(mesh.gateway_label||'Upstairs LoRa gateway')}</b><span>${escapeHtml(mesh.summary||'Waiting for gateway telemetry.')}</span><small>${escapeHtml(mesh.expected_device||'Elecrow M2 or ESP32-S3 + Wio-SX1262')} // ${escapeHtml(mesh.region||'US915')} // ${escapeHtml(mesh.channel||'LongFast')}</small></div><button onclick="refreshMeshStatus()">Refresh Mesh</button></div><div class="cyd-grid">${metricCell('State', state.replaceAll('_',' '), mesh.protocol||'meshtastic')}${metricCell('CLI', mesh.cli_available?'installed':'missing', mesh.cli_path||'install meshtastic CLI later')}${metricCell('Serial', mesh.preferred_port||'waiting', `${serials.length} candidate(s)`)}${metricCell('Nodes', mesh.node_count??nodes.length??0, mesh.mode||'serial gateway first')}${metricCell('MQTT', mesh.mqtt?.configured?'configured':(mesh.mqtt?.enabled?'needs server':'off'), mesh.mqtt?.server||'optional bridge')}${metricCell('Buddy Hooks', (mesh.cydbuddy_hooks||[]).length, 'CYD telemetry gets mesh block')}</div><div class="mesh-panels"><section><h3>Serial Candidates</h3>${serialHtml}</section><section><h3>Nodes Heard</h3>${nodeHtml}</section><section><h3>CYD Reactions</h3><ul>${hooks}</ul></section><section><h3>Setup Notes</h3><ul>${notes}</ul></section></div>${mesh.info_excerpt?`<pre class="mesh-info">${escapeHtml(mesh.info_excerpt)}</pre>`:''}`;
+  el.innerHTML=`<div class="mesh-dock ${mesh.available?'online':'waiting'}"><div><b>Meshtastic</b><span>${escapeHtml(mesh.summary||'Waiting for gateway telemetry.')}</span><small>CLI ${mesh.cli_available?'installed':'missing'} // MQTT ${mesh.mqtt?.configured?'configured':(mesh.mqtt?.enabled?'needs server':'off')} // ${escapeHtml(mesh.region||'US915')} // ${escapeHtml(mesh.channel||'LongFast')}</small></div><button onclick="refreshMeshStatus()">Refresh Mesh</button></div>${serialNote}<div class="mesh-gateway-list">${gatewayHtml}</div><div class="mesh-panels"><section><h3>CYD Reactions</h3><ul>${hooks}</ul></section><section><h3>Setup Notes</h3><ul>${notes}</ul></section></div>`;
 }
 
 async function refreshMeshStatus(){

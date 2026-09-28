@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.9.0
+
+Meshtastic Gateway now supports multiple gateways at once, each over its own transport -- so an
+Elecrow M2 on WiFi and a DIY ESP32-S3 + Wio-SX1262 on Bluetooth both show up and get queried
+independently, instead of the card assuming exactly one USB-tethered radio.
+
+### Changed
+- `meshtastic.gateways` replaces the old single `expected_device`/`serial_port`/`role` config
+  keys: a list of `{id, label, transport, target, role}`, `transport` one of `wifi` (`target` =
+  IP), `bluetooth` (`target` = BLE name/address), or `serial` (`target` = `/dev/tty*`, or leave
+  blank to auto-detect whatever's plugged into Hack-Safe's own USB). Each connects and gets
+  queried on its own -- one gateway being unreachable doesn't block the others.
+- Meshtastic Gateway card now renders one block per configured gateway (transport badge, state,
+  nodes heard, live info) under a shared header with the overall online count.
+- `meshtastic_status()` moved off the fast `full_status()` bundle and into its own collector slot
+  (25s budget, matching the `lab_toys` pattern) -- querying two gateways over WiFi/BLE can take
+  noticeably longer than one local serial read, and it shouldn't be able to drag down the
+  system/wifi/lan refresh if a gateway is slow to answer or offline.
+- Added `tests/test_meshtastic.py` (11 tests) covering config defaults/overrides, all three
+  transports, missing-target and missing-CLI states, and the multi-gateway rollup -- there was no
+  test coverage for this collector at all before.
+
 ## 2.8.0
 
 Wired up a real spot for the new LoRa/mesh hardware: the Elecrow Meshtastic M2 and a DIY

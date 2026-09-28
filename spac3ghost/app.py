@@ -313,13 +313,17 @@ def _collect_status_payload():
         'lab_toys': _lab_toys_status_cached,
         'externals': external_status,
         'tailscale_ip': tailscale_ip,
+        'meshtastic': meshtastic_status,
     }
     started = time.time()
     results = {}
     # lab_toys runs ~9 of its own sub-probes (Tailscale-hosted software checks, hardware
     # detection, etc.) and is not on the fast live-refresh path, so it gets more time than
-    # the others before falling back to a warming placeholder for just that section.
-    per_key_timeout = {'lab_toys': 20}
+    # the others before falling back to a warming placeholder for just that section. meshtastic
+    # can now dial out to a WiFi gateway and/or a BLE gateway each on its own connect timeout, so
+    # it's pulled out of the fast `full_status()` bundle too instead of risking dragging system/
+    # wifi/lan status down with it.
+    per_key_timeout = {'lab_toys': 20, 'meshtastic': 25}
     # Bounded to the machine's core count: this used to be one thread per collector (10+, several
     # of which fork their own subprocesses), which meant every ~20s refresh briefly oversubscribed
     # a 4-core Pi far past its actual parallelism.
@@ -332,7 +336,7 @@ def _collect_status_payload():
             except Exception as exc:
                 results[key] = {'available': False, 'error': str(exc)}
     status = results.pop('base') if isinstance(results.get('base'), dict) else {'time': int(time.time()), 'error': results.get('base')}
-    for key in ('vpn', 'tailscale', 'vision', 'vision_history', 'controls', 'spicy_tools', 'lab_toys', 'externals'):
+    for key in ('vpn', 'tailscale', 'vision', 'vision_history', 'controls', 'spicy_tools', 'lab_toys', 'externals', 'meshtastic'):
         status[key] = results.get(key)
     status['cyd_buddy'] = cyd_status()
     status['pwnagotchi_dock'] = pwn_dock_status()

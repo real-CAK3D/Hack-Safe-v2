@@ -69,15 +69,18 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     'meshtastic': {
         'enabled': True,
         'protocol': 'meshtastic',
-        'role': 'upstairs gateway / router node',
         'region': 'US915',
-        # Either the pre-built Elecrow M2 or a DIY ESP32-S3 + Wio-SX1262 build will show up as
-        # a serial candidate the same way; this is just what to expect on the label.
-        'expected_device': 'Elecrow Meshtastic M2 (ThinkNode) or DIY ESP32-S3 + Wio-SX1262',
+        'channel': 'LongFast',
         'mqtt_enabled': False,
         'mqtt_server': '',
-        'serial_port': '',
-        'channel': 'LongFast',
+        # Each gateway connects independently over its own transport, so one can sit on WiFi
+        # while another pairs over Bluetooth (or plug either into Hack-Safe's own USB and leave
+        # its target blank to auto-detect). Fill in "target" once a gateway is on the network/
+        # paired: an IP for wifi, a BLE name/address for bluetooth, or a /dev/tty* path for serial.
+        'gateways': [
+            {'id': 'm2', 'label': 'Elecrow Meshtastic M2', 'transport': 'wifi', 'target': '', 'role': 'upstairs gateway / router node'},
+            {'id': 'diy-sx1262', 'label': 'ESP32-S3 + Wio-SX1262', 'transport': 'bluetooth', 'target': '', 'role': 'node'},
+        ],
     },
     'sensors': {
         'tilt_level_raw': 1,

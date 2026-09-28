@@ -435,6 +435,18 @@ body.v2-compact .v2-tile .val { font-size: 19px; }
 .mesh-viz.loading { opacity: .78; }
 @media (max-width: 760px) { .mesh-dock { grid-template-columns: 1fr; } }
 
+/* One card per configured gateway -- stacks header/metrics/panels, unlike .mesh-dock's
+   header-plus-button row layout. */
+.mesh-gateway-list { display: grid; gap: 10px; }
+.mesh-gateway-card { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--v2-line); border-radius: var(--v2-radius-sm); background: #00000028; }
+.mesh-gateway-card.online { border-color: color-mix(in srgb, var(--green) 70%, transparent); box-shadow: 0 0 22px -14px var(--green); }
+.mesh-gateway-card.waiting { border-color: color-mix(in srgb, var(--yellow) 48%, transparent); }
+.mesh-gateway-card.warn { border-color: color-mix(in srgb, var(--red) 48%, transparent); }
+.mesh-gateway-head { display: grid; gap: 4px; min-width: 0; }
+.mesh-gateway-head b { color: var(--text); letter-spacing: 1.2px; }
+.mesh-gateway-head span, .mesh-gateway-head small { color: var(--dim); overflow-wrap: anywhere; }
+.mesh-transport { display: inline-block; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--v2-line); color: var(--cyan); margin-right: 6px; }
+
 /* Alert color states ----------------------------------------------------- */
 .alert-card.alert-green { --alert: var(--green) !important; }
 .alert-card.alert-yellow { --alert: var(--yellow) !important; }
