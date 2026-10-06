@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError
 
 from .config import load_config, save_config
+from . import storage
 from .paths import DATA_DIR, HOME, ROOT
 from .vision import configured_feeds, last_analysis, vision_backend_status
 
@@ -285,8 +286,7 @@ def _read_chat_history() -> List[Dict[str, Any]]:
 
 
 def _write_chat_history(rows: List[Dict[str, Any]]) -> None:
-    AI_CHAT_HISTORY.parent.mkdir(parents=True, exist_ok=True)
-    AI_CHAT_HISTORY.write_text(json.dumps(rows[-40:], indent=2))
+    storage.write_json(AI_CHAT_HISTORY, rows[-40:], indent=2)
 
 
 def ai_chat_status() -> Dict[str, Any]:

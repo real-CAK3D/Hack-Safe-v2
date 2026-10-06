@@ -786,6 +786,18 @@ class Handler(BaseHTTPRequestHandler):
             return json_response(self, result, code=200 if result.get('ok') else 400)
         self.send_error(404)
 
+    def log_request(self, code='-', size='-'):
+        # The UI polls several endpoints every few seconds; logging every 200 to
+        # stdout/stderr (redirected to logs/server.log or the journal) is a steady
+        # stream of SD-card writes. Keep errors; SPAC3GHOST_ACCESS_LOG=1 restores all.
+        try:
+            ok = int(getattr(code, 'value', code)) < 400
+        except (TypeError, ValueError):
+            ok = False
+        if ok and os.environ.get('SPAC3GHOST_ACCESS_LOG') != '1':
+            return
+        super().log_request(code, size)
+
     def log_message(self, format, *args):
         sys.stderr.write('[%s] %s\n' % (time.strftime('%H:%M:%S'), format % args))
 
