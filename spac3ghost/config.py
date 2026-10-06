@@ -7,6 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict
 
+from . import storage
 from .paths import DATA_DIR, HOME, ROOT
 
 CONFIG_FILE = DATA_DIR / 'config.json'
@@ -631,7 +632,6 @@ def load_config() -> Dict[str, Any]:
 
 
 def save_config(config: Dict[str, Any]) -> Dict[str, Any]:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
     merged = _merge(DEFAULT_CONFIG, config)
-    CONFIG_FILE.write_text(json.dumps(merged, indent=2, sort_keys=True))
+    storage.write_json(CONFIG_FILE, merged, indent=2, sort_keys=True)
     return merged

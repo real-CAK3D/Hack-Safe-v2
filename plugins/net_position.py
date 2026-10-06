@@ -4,6 +4,9 @@ from pathlib import Path
 
 from spac3ghost.paths import DATA_DIR
 
+LOG_CAP_BYTES = 2 * 1024 * 1024  # roll over to .1 past this so the log can't grow forever
+
+
 class Plugin:
     name = 'net_position'
     description = 'Safe local version of net-pos: records strongest nearby APs with current GPS/sensor context, no upload.'
@@ -14,6 +17,8 @@ class Plugin:
         nets = sorted(data.get('networks', []), key=lambda n: int(n.get('signal') or 0), reverse=True)[:5]
         rec = {'ts': int(time.time()), 'top_wifi': nets, 'note': 'local-only; no external geolocation/upload'}
         path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists() and path.stat().st_size > LOG_CAP_BYTES:
+            path.replace(path.with_name(path.name + '.1'))
         with path.open('a') as f:
             f.write(json.dumps(rec) + '\n')
         return {'logged': len(nets), 'path': str(path)}

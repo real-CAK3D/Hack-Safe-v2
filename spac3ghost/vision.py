@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Tuple
 from urllib.request import Request, urlopen
 
 from .config import load_config
+from . import storage
 from .paths import DATA_DIR, HOME, ROOT
 
 MODEL_PATHS = [(HOME / 'yolov8n.pt'), (ROOT / 'models/yolov8n.pt')]
@@ -123,7 +124,7 @@ def delete_vision_history_entry(ts: int) -> Dict[str, Any]:
     kept = [r for r in rows if int(r.get('ts') or 0) != int(ts)]
     if len(kept) == len(rows):
         return {'ok': False, 'error': f'no vision history entry with ts={ts}'}
-    VISION_HISTORY_FILE.write_text(json.dumps(kept, indent=2, sort_keys=True))
+    storage.write_json(VISION_HISTORY_FILE, kept, indent=2, sort_keys=True)
     snap = SNAP_DIR / f'{int(ts)}.jpg'
     if snap.exists():
         try:
@@ -147,7 +148,7 @@ def _save_vision_history(entry: Dict[str, Any], jpeg: bytes | None = None) -> No
             pass
     rows.append(entry)
     rows = rows[-80:]
-    VISION_HISTORY_FILE.write_text(json.dumps(rows, indent=2, sort_keys=True))
+    storage.write_json(VISION_HISTORY_FILE, rows, indent=2, sort_keys=True)
 
 
 def available_yolo_model() -> str:

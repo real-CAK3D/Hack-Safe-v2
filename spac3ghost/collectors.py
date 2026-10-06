@@ -21,17 +21,22 @@ from typing import Any, Dict, List
 
 from .config import load_config, save_config
 from . import hostinfo
-from .paths import DATA_DIR, HOME, ROOT
+from . import storage
+from .paths import DATA_DIR, HOME, ROOT, RUNTIME_DIR
 
 SEEN_FILE = DATA_DIR / 'seen.json'
 KNOWN_DEVICES_FILE = DATA_DIR / 'known_devices.json'
-STATUS_HISTORY_FILE = DATA_DIR / 'status_history.json'
+STATUS_HISTORY_FILE = RUNTIME_DIR / 'status_history.json'  # rolling chart data: RAM only
 WIFI_PSK_ACTIONS_FILE = DATA_DIR / 'wifi_psk_actions.json'
 GPS_TRAIL_FILE = DATA_DIR / 'gps_trail.json'
 HANDSHAKE_DIR = DATA_DIR / 'handshakes'
 CAPTURE_STATE_FILE = DATA_DIR / 'handshake_capture.json'
 CROWPI_STATUS = (HOME / 'Desktop/System-Controls/crowpi_status.py')
 PWN_PLUGINS = (HOME / 'src/pwnagotchi/pwnagotchi/plugins')
+TILT_STATE_FILE = RUNTIME_DIR / 'tilt_state.json'  # rewritten on every tilt poll: RAM only
+SENSOR_CACHE_FILE = RUNTIME_DIR / 'crowpi_status_cache.json'
+KNOWN_DEVICES_FLUSH_S = 600  # last_seen bumps are persisted at most this often
+_KNOWN_DEVICES_FLUSHED = 0.0
 _MEM_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
@@ -498,15 +503,12 @@ def calibrate_tilt_level(raw: Any | None = None) -> Dict[str, Any]:
     cfg = load_config()
     cfg.setdefault('sensors', {})['tilt_level_raw'] = raw_i
     save_config(cfg)
-    state_file = DATA_DIR / 'tilt_state.json'
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    state_file.write_text(json.dumps({'current': f'{raw_i}:LEVEL', 'ts': time.time(), 'raw': raw_i, 'orientation': 'LEVEL'}))
+    storage.write_json(TILT_STATE_FILE, {'current': f'{raw_i}:LEVEL', 'ts': time.time(), 'raw': raw_i, 'orientation': 'LEVEL'})
     return {'ok': True, 'raw': raw_i, 'orientation': 'LEVEL', 'message': f'CrowPi tilt calibrated: raw {raw_i} is LEVEL.'}
 
 
 def _annotate_tilt_event(data: Dict[str, Any]) -> Dict[str, Any]:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    state_file = DATA_DIR / 'tilt_state.json'
+    state_file = TILT_STATE_FILE
     gpio = data.get('gpio', {}) if isinstance(data, dict) else {}
     raw = gpio.get('tilt')
     # CrowPi tilt is a binary switch, not an accelerometer. Interpret it through
@@ -531,7 +533,7 @@ def _annotate_tilt_event(data: Dict[str, Any]) -> Dict[str, Any]:
         if previous and previous.get('current') != current:
             event['changed'] = True
             event['fast'] = (now - previous.get('ts', now)) <= 12
-        state_file.write_text(json.dumps({'current': current, 'ts': now, 'raw': raw, 'orientation': orientation}))
+        storage.write_json(state_file, {'current': current, 'ts': now, 'raw': raw, 'orientation': orientation})
     data['tilt_event'] = event
     return data
 
@@ -581,7 +583,7 @@ def fan_status() -> Dict[str, Any]:
 
 
 def sensor_status(force: bool = False) -> Dict[str, Any]:
-    cache = DATA_DIR / 'crowpi_status_cache.json'
+    cache = SENSOR_CACHE_FILE
     if not force and cache.exists() and (time.time() - cache.stat().st_mtime) <= 30:
         try:
             data = json.loads(cache.read_text())
@@ -597,8 +599,7 @@ def sensor_status(force: bool = False) -> Dict[str, Any]:
         text = run(['python3', str(CROWPI_STATUS)], timeout=10)
         try:
             data = _annotate_tilt_event(json.loads(text))
-            DATA_DIR.mkdir(parents=True, exist_ok=True)
-            cache.write_text(json.dumps(data))
+            storage.write_json(cache, data)
             return data
         except Exception as exc:
             if cache.exists():
@@ -664,8 +665,7 @@ def _load_seen() -> Dict[str, list]:
 
 
 def _save_seen(seen: Dict[str, list]) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    SEEN_FILE.write_text(json.dumps(seen, indent=2, sort_keys=True))
+    storage.write_json(SEEN_FILE, seen, indent=2, sort_keys=True)  # no-op unless something new showed up
 
 
 def mark_new(status: Dict[str, Any]) -> Dict[str, Any]:
@@ -1119,7 +1119,7 @@ def start_owned_lab_capture(body: Dict[str, Any], popen_factory=None) -> Dict[st
     with log_path.open('ab') as log:
         proc = popen_factory(argv, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     state = {'ok': True, 'mode': 'passive-owned-lab-capture', 'pid': int(getattr(proc, 'pid', 0) or 0), 'argv': argv, 'started': started, 'prefix': str(prefix), 'log': str(log_path), 'interface': interface, 'bssid': bssid, 'channel': channel, 'blocked': ['deauth automation', 'third-party networks', 'credential cracking']}
-    CAPTURE_STATE_FILE.write_text(json.dumps(state, indent=2))
+    storage.write_json(CAPTURE_STATE_FILE, state, indent=2)
     return state
 
 def _iw_capabilities() -> Dict[str, Any]:
@@ -1513,8 +1513,7 @@ def _read_json_file(path: Path, default):
 
 
 def _write_json_file(path: Path, data) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, sort_keys=True))
+    storage.write_json(path, data, indent=2, sort_keys=True)
 
 
 def _device_key(kind: str, item: Dict[str, Any]) -> str:
@@ -1657,11 +1656,13 @@ def wifi_target_action(ssid: str, action: str, label: str | None = None) -> Dict
 
 
 def known_devices_status(status: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    global _KNOWN_DEVICES_FLUSHED
     data = _known_map()
     devices = data.setdefault('devices', {})
     now = int(time.time())
     online_keys = set()
     if status:
+        known_before = set(devices)
         for item in _device_items(status):
             key = f"{item['kind']}:{item['id']}"
             online_keys.add(key)
@@ -1669,7 +1670,11 @@ def known_devices_status(status: Dict[str, Any] | None = None) -> Dict[str, Any]
             rec['last_seen'] = now
             rec['last_name'] = item.get('name')
             rec['last_meta'] = {k: v for k, v in item.items() if k not in ('kind', 'id')}
-        _write_json_file(KNOWN_DEVICES_FILE, data)
+        # Every status refresh bumps last_seen; persisting that each time is pure SD
+        # wear. New devices are saved right away, last_seen bumps every few minutes.
+        if set(devices) != known_before or now - _KNOWN_DEVICES_FLUSHED >= KNOWN_DEVICES_FLUSH_S:
+            _write_json_file(KNOWN_DEVICES_FILE, data)
+            _KNOWN_DEVICES_FLUSHED = now
     rows = []
     for key, rec in sorted(devices.items(), key=lambda kv: (not kv[1].get('watched'), not kv[1].get('last_seen', 0), kv[0])):
         r = dict(rec)
