@@ -69,6 +69,14 @@ Stop:
 /home/pi/Desktop/System-Controls/stop-spac3-gh0st.sh
 ```
 
+## API keys
+
+The God's Eye View globe (`web/godseye-app`) reads its Google Maps key and Cesium ion token from
+the environment. Copy `.env.example` to `.env` in the project root and fill in `GOOGLE_MAPS_API_KEY`
+and `CESIUM_ION_TOKEN` (`.env` is git-ignored). The server serves them to the globe at
+`/godseye-app/config.js`. Without them the globe still loads, minus Google geocoding/3D tiles and
+Cesium ion assets.
+
 ## Settings
 
 Settings are stored at:

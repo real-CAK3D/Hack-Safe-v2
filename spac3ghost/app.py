@@ -162,6 +162,25 @@ def proxy_godseye(handler, upstream_path: str, rewrite_html: bool = False):
     except Exception as exc:
         json_response(handler, {'ok': False, 'error': f'Gods Eye proxy failed: {exc}'}, code=502)
 
+def serve_godseye_config(handler):
+    """Hand the God's Eye View globe its API keys from the environment / .env.
+
+    The keys are not stored in the repo: set GOOGLE_MAPS_API_KEY and CESIUM_ION_TOKEN
+    in .env (see .env.example). The globe still loads without them, minus Google
+    geocoding/photorealistic tiles and Cesium ion assets.
+    """
+    body = (
+        f"window.__GOOGLE_MAPS_API_KEY__ = {json.dumps(os.environ.get('GOOGLE_MAPS_API_KEY', ''))};\n"
+        f"window.__CESIUM_ION_TOKEN__ = {json.dumps(os.environ.get('CESIUM_ION_TOKEN', ''))};\n"
+    ).encode('utf-8')
+    handler.send_response(200)
+    handler.send_header('Content-Type', 'application/javascript; charset=utf-8')
+    handler.send_header('Content-Length', str(len(body)))
+    handler.send_header('Cache-Control', 'no-store')
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
 def serve_godseye_shell(handler):
     """Serve the pre-built God's Eye View globe shell as static files.
 
@@ -436,6 +455,8 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
         self._godseye_query = parsed.query
+        if path == '/godseye-app/config.js':
+            return serve_godseye_config(self)
         if path == '/godseye-live' or path == '/godseye-live/':
             return serve_godseye_shell(self)
         if path.startswith('/godseye-live/'):

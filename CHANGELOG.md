@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.10.1
+
+### Changed
+- **API keys moved out of the code.** The God's Eye View globe no longer ships a hard-coded Google
+  Maps key or Cesium ion token. Set `GOOGLE_MAPS_API_KEY` and `CESIUM_ION_TOKEN` in `.env` (see
+  `.env.example`) or the environment. The server loads `.env` at startup and hands the keys to the
+  globe via `/godseye-app/config.js`.
+
 ## 2.10.0
 
 Fixed "works on Hack-Safe itself but not on my phone" -- root-caused live via screen-share from a
