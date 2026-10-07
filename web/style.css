@@ -968,6 +968,10 @@ button.is-error { color:var(--red); border-color:var(--red); }
 .house-service, .signal-chip-row span { border:1px solid #1e4b31; background:#06120b; color:var(--text); text-decoration:none; border-radius:999px; padding:5px 8px; font-size:10px; }
 .house-service b { color:var(--green); }
 .house-service small { color:var(--dim); margin-left:5px; }
+.house-service.state-offline { border-color:#5a2020; }
+.house-service.state-offline b { color:#ff6b6b; }
+.house-service.state-stale { border-color:#5a4a1a; }
+.house-service.state-stale b { color:#ffcf5a; }
 .identity-columns { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 .identity-columns h3 { margin:0 0 6px; color:var(--yellow); font-size:11px; text-transform:uppercase; }
 .identity-row { border:1px solid #1e4b31; background:#06120b; border-radius:7px; padding:7px; margin-bottom:5px; }

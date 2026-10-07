@@ -13,6 +13,7 @@ from .paths import DATA_DIR, HOME, ROOT
 CONFIG_FILE = DATA_DIR / 'config.json'
 
 DEFAULT_CONFIG: Dict[str, Any] = {
+    'neurolab': {'enabled': True, 'url': 'https://nukebox.tailac984b.ts.net:10000'},
     'mood': {
         'warm_c': 65,
         'hot_c': 75,
