@@ -1197,7 +1197,8 @@ function renderWifiVault(data){
     const ssid=escapeHtml(n.ssid||n.name||`network-${i+1}`);
     const value=n.password?escapeHtml(n.password):'••••••••';
     const shown=wifiPasswordsRevealed && n.password;
-    return `<tr><td>${ssid}</td><td>${n.has_password?'saved':'none'}</td><td><span class="wifi-pass ${shown?'revealed':'masked'}">${shown?value:'••••••••'}</span></td></tr>`;
+    const missing=wifiPasswordsRevealed && n.has_password && !n.password;
+    return `<tr><td>${ssid}</td><td>${n.has_password?'saved':'none'}</td><td><span class="wifi-pass ${shown?'revealed':'masked'}">${shown?value:(missing?'unavailable (could not read secret)':(n.has_password?'••••••••':''))}</span></td></tr>`;
   }).join('') || '<tr><td colspan="3">no saved Wi-Fi profiles</td></tr>';
   el.innerHTML = `<div class="wifi-vault-toolbar"><label class="toggle-switch"><input type="checkbox" ${wifiPasswordsRevealed?'checked':''} onchange="toggleWifiPasswords(this.checked)"><span></span><b>${wifiPasswordsRevealed?'Passwords visible':'Passwords hidden'}</b></label></div><table class="mini-table"><thead><tr><th>SSID</th><th>Password</th><th>Value</th></tr></thead><tbody>${rows}</tbody></table><div class="scanline-note">Known Network Vault shown. Use the switch to reveal/hide values on this screen.</div>`;
 }

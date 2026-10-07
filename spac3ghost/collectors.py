@@ -638,19 +638,41 @@ def parse_nmcli_connection_names(text: str) -> List[Dict[str, str]]:
     return rows
 
 
+def _parse_nmcli_wifi_detail(detail: str, fallback_ssid: str) -> Dict[str, str]:
+    ssid, psk, key_mgmt = fallback_ssid, '', ''
+    for line in detail.splitlines():
+        line = line.strip()
+        if line.startswith('802-11-wireless.ssid:'):
+            ssid = line.split(':', 1)[1].strip() or fallback_ssid
+        elif line.startswith('802-11-wireless-security.psk:'):
+            psk = line.split(':', 1)[1].strip()
+        elif line.startswith('802-11-wireless-security.key-mgmt:'):
+            key_mgmt = line.split(':', 1)[1].strip()
+    if psk == '--':  # nmcli's "no value" placeholder, e.g. when it isn't allowed to read the secret
+        psk = ''
+    return {'ssid': ssid, 'psk': psk, 'key_mgmt': key_mgmt}
+
+
 def known_wifi_passwords(reveal: bool = False) -> Dict[str, Any]:
     rows = []
     for conn in parse_nmcli_connection_names(run(['nmcli', '-t', '-f', 'NAME,TYPE', 'connection', 'show'], timeout=4)):
         name = conn['name']
-        detail = run(['nmcli', '--show-secrets', 'connection', 'show', name], timeout=4)
-        ssid = name
-        psk = ''
-        for line in detail.splitlines():
-            if line.strip().startswith('802-11-wireless.ssid:'):
-                ssid = line.split(':', 1)[1].strip() or name
-            if line.strip().startswith('802-11-wireless-security.psk:'):
-                psk = line.split(':', 1)[1].strip()
-        rows.append({'name': name, 'ssid': ssid, 'password': psk if reveal else ('••••••••' if psk else ''), 'has_password': bool(psk), 'revealed': reveal})
+        info = _parse_nmcli_wifi_detail(run(['nmcli', '--show-secrets', 'connection', 'show', name], timeout=4), name)
+        secured = info['key_mgmt'] in ('wpa-psk', 'sae')
+        # NetworkManager only hands saved secrets to a process that belongs to an active login
+        # session. Started from the desktop that's true; started over SSH (every redeploy) it
+        # isn't, and nmcli silently returns nothing -- so the reveal toggle showed blanks. Only
+        # when the user has actually flipped the toggle, retry that one read with sudo.
+        if reveal and secured and not info['psk']:
+            info = _parse_nmcli_wifi_detail(run(['sudo', '-n', 'nmcli', '--show-secrets', 'connection', 'show', name], timeout=6), name)
+            secured = secured or info['key_mgmt'] in ('wpa-psk', 'sae')
+        has_password = bool(info['psk']) or secured
+        rows.append({
+            'name': name, 'ssid': info['ssid'],
+            'password': info['psk'] if reveal else ('••••••••' if has_password else ''),
+            'has_password': has_password, 'revealed': reveal,
+            'secret_unavailable': bool(reveal and has_password and not info['psk']),
+        })
     return {'available': True, 'revealed': reveal, 'networks': rows}
 
 

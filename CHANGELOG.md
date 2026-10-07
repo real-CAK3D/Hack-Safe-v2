@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.10.2
+
+### Fixed
+- **Known Networks' "Passwords visible" toggle showed nothing.** NetworkManager only hands saved
+  Wi-Fi secrets to a process that belongs to an active login session. Spac3-Gh0st had that when it
+  was started from the desktop, but lost it when it was restarted over SSH (every redeploy), and
+  `nmcli` then silently returned its `--` placeholder instead of the password. With the toggle on,
+  the vault now retries just that read with `sudo -n nmcli` when the plain read comes back empty
+  (never when the toggle is off). If a secret still can't be read the row now says "unavailable"
+  instead of looking blank, and networks are marked "saved" from their security type rather than
+  from whether the secret happened to be readable.
+
 ## 2.10.1
 
 ### Changed
