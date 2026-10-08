@@ -1727,6 +1727,15 @@ def household_signals_status(status: Dict[str, Any]) -> Dict[str, Any]:
         {'id': 'heimdall', 'label': 'Heimdall @ theBAK3RY', 'url': 'http://100.65.33.36:8080', 'role': 'dashboard'},
         {'id': 'ruview', 'label': 'RuView local mirror', 'url': 'http://100.75.120.80:8765/ruview/index.html', 'role': 'CSI/RF sensing UI'},
     ]
+    try:
+        from . import neurolab as _nl
+        _snap = _nl.neurolab_snapshot()
+        home_services.append({
+            'id': 'neurolab', 'label': 'NeuroLab @ NukeBox', 'url': _snap.get('url') or _nl.neurolab_url(),
+            'role': _nl.neurolab_role(_snap), 'state': _nl.neurolab_state(_snap),
+        })
+    except Exception:
+        pass
     rows = []
     unknown = []
     for d in devices[:80]:
